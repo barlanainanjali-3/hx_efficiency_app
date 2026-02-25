@@ -416,11 +416,10 @@ deviation = efficiency - 100
 # ==============================================================
 # TAB LAYOUT
 # ==============================================================
-tab1, tab2, tab3, tab4 = st.tabs([
+tab1, tab2, tab3 = st.tabs([
     "📊 Efficiency & Effectiveness",
     "🔍 Root Cause Analysis",
-    "🎯 Suggested Adjustments",
-    "📋 Design Reference"
+    "🎯 Suggested Adjustments"
 ])
 
 
@@ -526,6 +525,81 @@ with tab1:
                           height=380, template='plotly_white',
                           font=dict(family='DM Sans'), margin=dict(t=40, b=40))
         st.plotly_chart(fig2, use_container_width=True)
+    st.markdown('<div class="section-title">Export Data</div>', unsafe_allow_html=True)
+
+    # Prepare design reference data for export
+    ref_rows = []
+    for name, spec in DESIGN_SPECS.items():
+        ref_rows.append({
+            'Stream': name,
+            'Fluid': spec['fluid'],
+            'Type': spec['stream_type'].upper(),
+            'Flow (Nm³/h)': f"{spec['total_flowrate_Nm3h']:,}",
+            'T_in (°C)': spec['T_in_C'],
+            'T_out (°C)': spec['T_out_C'],
+            'P (bara)': spec['P_operating_bara'],
+            'ΔP (mbar)': spec['pressure_drop_mbar'],
+            'Q (kcal/h)': f"{spec['heat_duty_kcalh']:,}",
+            'Phase Change': '✅' if spec['phase_change'] else '—'
+        })
+    df_design_ref = pd.DataFrame(ref_rows)
+
+    # Prepare comparison data for export
+    comparison = []
+    for name in DESIGN_SPECS.keys():
+        d = DESIGN_SPECS[name]
+        p = plant_data[name]
+        pr = plant_case['results'][name]
+        q_p = pr['Q_kcalh']
+        q_d = d['heat_duty_kcalh']
+        duty_dev = ((q_p - q_d) / q_d * 100) if q_p else None
+        
+        comparison.append({
+            'Stream': name,
+            'Type': d['stream_type'],
+            'Flow_design (Nm3/h)': d['total_flowrate_Nm3h'],
+            'Flow_plant (Nm3/h)': p['total_flowrate_Nm3h'],
+            'Flow_dev (%)': round((p['total_flowrate_Nm3h'] - d['total_flowrate_Nm3h']) / d['total_flowrate_Nm3h'] * 100, 2),
+            'Tin_design (°C)': d['T_in_C'],
+            'Tin_plant (°C)': p['T_in_C'],
+            'Tin_dev (°C)': round(p['T_in_C'] - d['T_in_C'], 1),
+            'Tout_design (°C)': d['T_out_C'],
+            'Tout_plant (°C)': p['T_out_C'],
+            'Tout_dev (°C)': round(p['T_out_C'] - d['T_out_C'], 1),
+            'Q_design (kcal/h)': q_d,
+            'Q_plant (kcal/h)': round(q_p, 0) if q_p else None,
+            'Duty_dev (%)': round(duty_dev, 2) if duty_dev else None,
+            'Duty_ratio': round(q_p / q_d, 4) if q_p and q_d else None
+        })
+    df_comparison = pd.DataFrame(comparison)
+
+    def to_excel(df_design, df_comparison_data, df_rc_data, df_opt_data):
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df_design.to_excel(writer, sheet_name='Design_Specs', index=False)
+            df_comparison_data.to_excel(writer, sheet_name='Plant_vs_Design', index=False)
+            df_rc_data.to_excel(writer, sheet_name='Root_Cause_Analysis', index=False)
+            df_opt_data.to_excel(writer, sheet_name='Optimized_Adjustments', index=False)
+        processed_data = output.getvalue()
+        return processed_data
+
+    # Run root cause and optimization again to get the latest dataframes for export
+    df_rc_export = run_root_cause(DESIGN_SPECS, plant_data, design_eps, eps_plant)
+    df_opt_export, _ = run_optimization(DESIGN_SPECS, plant_data, design_eps)
+
+    excel_data = to_excel(df_design_ref, df_comparison, df_rc_export, df_opt_export)
+    # Create a custom styled download link
+    b64_excel_data = base64.b64encode(excel_data).decode()
+    html_download_link = f'''
+        <a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64_excel_data}"
+           download="HX_Efficiency_Report.xlsx"
+           style="background-color: #28a745; color: white; padding: 0.75rem 1.25rem;
+                  text-align: center; text-decoration: none; display: inline-block;
+                  font-size: 1rem; border-radius: 0.5rem; font-weight: bold; cursor: pointer;">
+            📥 Download Full Report (Excel)
+        </a>
+    '''
+    st.markdown(html_download_link, unsafe_allow_html=True)
 
 
 # ==============================================================
@@ -652,67 +726,8 @@ with tab3:
         fig_opt.update_yaxes(title_text="%", row=1, col=2)
         st.plotly_chart(fig_opt, use_container_width=True)
 
-    df_design_ref = pd.DataFrame(ref_rows)
-    st.dataframe(df_design_ref, use_container_width=True, hide_index=True)
     
-    # Re-calculate comparison dataframe for export
-    comparison = []
-    for name in DESIGN_SPECS.keys():
-        d = DESIGN_SPECS[name]
-        p = plant_data[name]
-        pr = plant_case['results'][name]
-        q_p = pr['Q_kcalh']
-        q_d = d['heat_duty_kcalh']
-        duty_dev = ((q_p - q_d) / q_d * 100) if q_p else None
-        
-        comparison.append({
-            'Stream': name,
-            'Type': d['stream_type'],
-            'Flow_design (Nm3/h)': d['total_flowrate_Nm3h'],
-            'Flow_plant (Nm3/h)': p['total_flowrate_Nm3h'],
-            'Flow_dev (%)': round((p['total_flowrate_Nm3h'] - d['total_flowrate_Nm3h']) / d['total_flowrate_Nm3h'] * 100, 2),
-            'Tin_design (°C)': d['T_in_C'],
-            'Tin_plant (°C)': p['T_in_C'],
-            'Tin_dev (°C)': round(p['T_in_C'] - d['T_in_C'], 1),
-            'Tout_design (°C)': d['T_out_C'],
-            'Tout_plant (°C)': p['T_out_C'],
-            'Tout_dev (°C)': round(p['T_out_C'] - d['T_out_C'], 1),
-            'Q_design (kcal/h)': q_d,
-            'Q_plant (kcal/h)': round(q_p, 0) if q_p else None,
-            'Duty_dev (%)': round(duty_dev, 2) if duty_dev else None,
-            'Duty_ratio': round(q_p / q_d, 4) if q_p and q_d else None
-        })
-    df_comparison = pd.DataFrame(comparison)
-
-    st.markdown('<div class="section-title">Export Data</div>', unsafe_allow_html=True)
-
-    def to_excel(df_design, df_comparison_data, df_rc_data, df_opt_data):
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            df_design.to_excel(writer, sheet_name='Design_Specs', index=False)
-            df_comparison_data.to_excel(writer, sheet_name='Plant_vs_Design', index=False)
-            df_rc_data.to_excel(writer, sheet_name='Root_Cause_Analysis', index=False)
-            df_opt_data.to_excel(writer, sheet_name='Optimized_Adjustments', index=False)
-        processed_data = output.getvalue()
-        return processed_data
-
-    # Run root cause and optimization again to get the latest dataframes for export
-    df_rc_export = run_root_cause(DESIGN_SPECS, plant_data, design_eps, eps_plant)
-    df_opt_export, _ = run_optimization(DESIGN_SPECS, plant_data, design_eps)
-    
-    excel_data = to_excel(df_design_ref, df_comparison, df_rc_export, df_opt_export)
-   # Create a custom styled download link
-    b64_excel_data = base64.b64encode(excel_data).decode()
-    html_download_link = f'''
-        <a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64_excel_data}"
-           download="HX_Efficiency_Report.xlsx"
-           style="background-color: #28a745; color: white; padding: 0.75rem 1.25rem;
-                  text-align: center; text-decoration: none; display: inline-block;
-                  font-size: 1rem; border-radius: 0.5rem; font-weight: bold; cursor: pointer;">
-            📥 Download Full Report (Excel)
-        </a>
-    '''
-    st.markdown(html_download_link, unsafe_allow_html=True)
+  
 
     st.markdown(f"""
     **HX Details:**
