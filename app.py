@@ -2,602 +2,682 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 import copy
+import plotly.graph_objects as go
+import plotly.express as px
+from plotly.subplots import make_subplots
+
+# ---- Must install CoolProp: pip install CoolProp ----
 from CoolProp.CoolProp import PropsSI
 
-# ============================================================
-# Streamlit App: Heat Exchanger Efficiency Model
-# ============================================================
-
+# ==============================================================
+# PAGE CONFIG
+# ==============================================================
 st.set_page_config(
-    page_title="HX Efficiency Model",
+    page_title="HX Efficiency Analyzer",
     page_icon="🔥",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
-st.title(" Plate-Fin Heat Exchanger Efficiency Model")
-st.markdown("### Multi-Stream Counter-Flow — JSPL India (ASU)")
-st.write("Adjust the parameters below to analyze real-time plant performance against design specifications.")
+# ==============================================================
+# CUSTOM CSS
+# ==============================================================
+st.markdown("""
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
-# ============================================================
-# Static Design Specifications (from Cell 2)
-# ============================================================
-
-# Fluid mapping for CoolProp
-# AGMP/AGHP/AGT = Air, GOX = Oxygen, GAN/WN2 = Nitrogen
-FLUID_MAP = {
-    'AGMP': 'Air',
-    'AGHP': 'Air',
-    'AGT':  'Air',
-    'GOX':  'Oxygen',
-    'GAN':  'Nitrogen',
-    'WN2':  'Nitrogen'
-}
-
-# Design specifications dictionary
-# All flowrates in Nm3/h, temperatures in °C, pressures in bar(a)
-# pressure_drop in mbar, heat_duty_design in kcal/h
-design_specs = {
-    'AGMP': {
-        'fluid': 'Air',
-        'total_flowrate_Nm3h': 27100,
-        'vapor_in_Nm3h': 27100,
-        'vapor_out_Nm3h': 26932,
-        'liquid_in_Nm3h': 0,
-        'liquid_out_Nm3h': 168,
-        'T_in_C': 30.0,
-        'T_out_C': -172.7,
-        'P_operating_bara': 5.891,
-        'pressure_drop_mbar': 164,
-        'heat_duty_kcalh': 1798266,
-        'phase_change': True,  # small liquid out
-        'stream_type': 'hot'   # hot stream being cooled
-    },
-    'AGHP': {
-        'fluid': 'Air',
-        'total_flowrate_Nm3h': 14300,
-        'vapor_in_Nm3h': 14300,
-        'vapor_out_Nm3h': 0,
-        'liquid_in_Nm3h': 0,
-        'liquid_out_Nm3h': 14300,
-        'T_in_C': 40.0,
-        'T_out_C': -170.0,
-        'P_operating_bara': 62.680,
-        'pressure_drop_mbar': 173,
-        'heat_duty_kcalh': 1670189,
-        'phase_change': True,  # fully condensed
-        'stream_type': 'hot'
-    },
-    'AGT': {
-        'fluid': 'Air',
-        'total_flowrate_Nm3h': 13500,
-        'vapor_in_Nm3h': 13500,
-        'vapor_out_Nm3h': 13500,
-        'liquid_in_Nm3h': 0,
-        'liquid_out_Nm3h': 0,
-        'T_in_C': 40.0,
-        'T_out_C': -110.0,
-        'P_operating_bara': 44.890,
-        'pressure_drop_mbar': 126,
-        'heat_duty_kcalh': 747686,
-        'phase_change': True,  # user confirmed phase change at inlet
-        'stream_type': 'hot'
-    },
-    'GOX': {
-        'fluid': 'Oxygen',
-        'total_flowrate_Nm3h': 11107,
-        'vapor_in_Nm3h': 0,
-        'vapor_out_Nm3h': 11107,
-        'liquid_in_Nm3h': 11107,
-        'liquid_out_Nm3h': 0,
-        'T_in_C': -177.0,
-        'T_out_C': 28.3,
-        'P_operating_bara': 31.352,
-        'pressure_drop_mbar': 198,
-        'heat_duty_kcalh': 1466526,
-        'phase_change': True,  # liquid in -> vapor out (vaporization)
-        'stream_type': 'cold'  # cold stream being heated
-    },
-    'GAN': {
-        'fluid': 'Nitrogen',
-        'total_flowrate_Nm3h': 4000,
-        'vapor_in_Nm3h': 4000,
-        'vapor_out_Nm3h': 4000,
-        'liquid_in_Nm3h': 0,
-        'liquid_out_Nm3h': 0,
-        'T_in_C': -175.5,
-        'T_out_C': 28.3,
-        'P_operating_bara': 1.359,
-        'pressure_drop_mbar': 103,
-        'heat_duty_kcalh': 255814,
-        'phase_change': False,
-        'stream_type': 'cold'
-    },
-    'WN2': {
-        'fluid': 'Nitrogen',
-        'total_flowrate_Nm3h': 39085,
-        'vapor_in_Nm3h': 39085,
-        'vapor_out_Nm3h': 39085,
-        'liquid_in_Nm3h': 0,
-        'liquid_out_Nm3h': 0,
-        'T_in_C': -175.5,
-        'T_out_C': 28.3,
-        'P_operating_bara': 1.346,
-        'pressure_drop_mbar': 208,
-        'heat_duty_kcalh': 2497700,
-        'phase_change': False,
-        'stream_type': 'cold'
+    .stApp {
+        font-family: 'DM Sans', sans-serif;
     }
-}
+    .main-header {
+        font-size: 2.2rem;
+        font-weight: 700;
+        color: #0f172a;
+        margin-bottom: 0.2rem;
+        letter-spacing: -0.5px;
+    }
+    .sub-header {
+        font-size: 1rem;
+        color: #64748b;
+        margin-bottom: 2rem;
+    }
+    .metric-card {
+        background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 1.2rem 1.5rem;
+        text-align: center;
+    }
+    .metric-value {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 2rem;
+        font-weight: 700;
+        margin: 0.3rem 0;
+    }
+    .metric-label {
+        font-size: 0.8rem;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+    .good { color: #16a34a; }
+    .warn { color: #d97706; }
+    .bad { color: #dc2626; }
+    .section-title {
+        font-size: 1.3rem;
+        font-weight: 700;
+        color: #1e293b;
+        margin: 1.5rem 0 0.8rem 0;
+        padding-bottom: 0.4rem;
+        border-bottom: 2px solid #e2e8f0;
+    }
+    .action-box {
+        background: #fffbeb;
+        border-left: 4px solid #f59e0b;
+        padding: 1rem 1.2rem;
+        border-radius: 0 8px 8px 0;
+        margin: 0.5rem 0;
+    }
+    .action-box-good {
+        background: #f0fdf4;
+        border-left: 4px solid #16a34a;
+        padding: 1rem 1.2rem;
+        border-radius: 0 8px 8px 0;
+        margin: 0.5rem 0;
+    }
+    div[data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
+    }
+    div[data-testid="stSidebar"] .stMarkdown p,
+    div[data-testid="stSidebar"] .stMarkdown label,
+    div[data-testid="stSidebar"] .stMarkdown h1,
+    div[data-testid="stSidebar"] .stMarkdown h2,
+    div[data-testid="stSidebar"] .stMarkdown h3 {
+        color: #e2e8f0 !important;
+    }
+</style>
+""", unsafe_allow_html=True)
 
-# ============================================================
-# Core Functions Extracted for Utility/Streamlit App (from previous cells)
-# (These functions will be copied from b2ec2216)
-# ============================================================
-
+# ==============================================================
+# FLUID PROPERTY FUNCTIONS
+# ==============================================================
 def C_to_K(T_C):
-    """Convert Celsius to Kelvin."""
     return T_C + 273.15
 
 def bara_to_Pa(P_bara):
-    """Convert bar(absolute) to Pascal."""
     return P_bara * 1e5
 
 def Nm3h_to_kgs(flowrate_Nm3h, fluid):
-    """
-    Convert Nm³/h to kg/s.
-    Normal conditions: 0°C (273.15K), 1.01325 bar (101325 Pa).
-    """
-    T_normal = 273.15  # K
-    P_normal = 101325  # Pa
-    # Density at normal conditions
-    rho_normal = PropsSI('D', 'T', T_normal, 'P', P_normal, fluid)  # kg/m³
-    mass_flow_kgh = flowrate_Nm3h * rho_normal  # kg/h
-    mass_flow_kgs = mass_flow_kgh / 3600.0  # kg/s
-    return mass_flow_kgs
+    T_n, P_n = 273.15, 101325
+    rho = PropsSI('D', 'T', T_n, 'P', P_n, fluid)
+    return flowrate_Nm3h * rho / 3600.0
 
 def get_specific_enthalpy(fluid, T_C, P_bara, phase='gas'):
-    """
-    Get specific enthalpy (J/kg) using CoolProp.
-    For two-phase or near-saturation, we use T and P directly.
-    If CoolProp fails (e.g., two-phase), we try phase-specific lookup.
-    """
     T_K = C_to_K(T_C)
     P_Pa = bara_to_Pa(P_bara)
-
     try:
-        h = PropsSI('H', 'T', T_K, 'P', P_Pa, fluid)
-        return h
+        return PropsSI('H', 'T', T_K, 'P', P_Pa, fluid)
     except Exception:
-        # If in two-phase region, get saturated liquid or vapor enthalpy
         try:
-            if phase == 'liquid':
-                h = PropsSI('H', 'P', P_Pa, 'Q', 0, fluid)  # saturated liquid
-            else:
-                h = PropsSI('H', 'P', P_Pa, 'Q', 1, fluid)  # saturated vapor
-            return h
-        except Exception as e2:
-            # print(f"  ⚠️  CoolProp fallback failed for {fluid} at T={T_C}°C, P={P_bara} bara: {e2}")
+            q = 0 if phase == 'liquid' else 1
+            return PropsSI('H', 'P', P_Pa, 'Q', q, fluid)
+        except Exception:
             return None
 
-# From Cell 4: Heat Duty Calculation per Stream (Enthalpy-Based)
-def calculate_heat_duty_enthalpy(stream_name, spec):
-    """
-    Calculate heat duty using enthalpy difference method.
-    Q = m_dot * |h_out - h_in|  (in Watts)
+def get_saturation_temp(fluid, P_bara):
+    try:
+        return PropsSI('T', 'P', bara_to_Pa(P_bara), 'Q', 0.5, fluid) - 273.15
+    except Exception:
+        return None
 
-    For streams with phase change:
-    - If fluid enters as liquid and exits as vapor (or vice versa),
-      we compute enthalpy at inlet and outlet conditions.
-    - For partial phase change (e.g., AGMP: mostly vapor out + small liquid out),
-      we compute weighted enthalpy at outlet.
+# ==============================================================
+# DESIGN SPECIFICATIONS
+# ==============================================================
+DESIGN_SPECS = {
+    'AGMP': {
+        'fluid': 'Air', 'total_flowrate_Nm3h': 27100,
+        'vapor_in_Nm3h': 27100, 'vapor_out_Nm3h': 26932,
+        'liquid_in_Nm3h': 0, 'liquid_out_Nm3h': 168,
+        'T_in_C': 30.0, 'T_out_C': -172.7,
+        'P_operating_bara': 5.891, 'pressure_drop_mbar': 164,
+        'heat_duty_kcalh': 1798266, 'phase_change': True, 'stream_type': 'hot'
+    },
+    'AGHP': {
+        'fluid': 'Air', 'total_flowrate_Nm3h': 14300,
+        'vapor_in_Nm3h': 14300, 'vapor_out_Nm3h': 0,
+        'liquid_in_Nm3h': 0, 'liquid_out_Nm3h': 14300,
+        'T_in_C': 40.0, 'T_out_C': -170.0,
+        'P_operating_bara': 62.680, 'pressure_drop_mbar': 173,
+        'heat_duty_kcalh': 1670189, 'phase_change': True, 'stream_type': 'hot'
+    },
+    'AGT': {
+        'fluid': 'Air', 'total_flowrate_Nm3h': 13500,
+        'vapor_in_Nm3h': 13500, 'vapor_out_Nm3h': 13500,
+        'liquid_in_Nm3h': 0, 'liquid_out_Nm3h': 0,
+        'T_in_C': 40.0, 'T_out_C': -110.0,
+        'P_operating_bara': 44.890, 'pressure_drop_mbar': 126,
+        'heat_duty_kcalh': 747686, 'phase_change': True, 'stream_type': 'hot'
+    },
+    'GOX': {
+        'fluid': 'Oxygen', 'total_flowrate_Nm3h': 11107,
+        'vapor_in_Nm3h': 0, 'vapor_out_Nm3h': 11107,
+        'liquid_in_Nm3h': 11107, 'liquid_out_Nm3h': 0,
+        'T_in_C': -177.0, 'T_out_C': 28.3,
+        'P_operating_bara': 31.352, 'pressure_drop_mbar': 198,
+        'heat_duty_kcalh': 1466526, 'phase_change': True, 'stream_type': 'cold'
+    },
+    'GAN': {
+        'fluid': 'Nitrogen', 'total_flowrate_Nm3h': 4000,
+        'vapor_in_Nm3h': 4000, 'vapor_out_Nm3h': 4000,
+        'liquid_in_Nm3h': 0, 'liquid_out_Nm3h': 0,
+        'T_in_C': -175.5, 'T_out_C': 28.3,
+        'P_operating_bara': 1.359, 'pressure_drop_mbar': 103,
+        'heat_duty_kcalh': 255814, 'phase_change': False, 'stream_type': 'cold'
+    },
+    'WN2': {
+        'fluid': 'Nitrogen', 'total_flowrate_Nm3h': 39085,
+        'vapor_in_Nm3h': 39085, 'vapor_out_Nm3h': 39085,
+        'liquid_in_Nm3h': 0, 'liquid_out_Nm3h': 0,
+        'T_in_C': -175.5, 'T_out_C': 28.3,
+        'P_operating_bara': 1.346, 'pressure_drop_mbar': 208,
+        'heat_duty_kcalh': 2497700, 'phase_change': False, 'stream_type': 'cold'
+    }
+}
 
-    Returns: dict with Q_watts, Q_kcalh, h_in, h_out, m_dot, details
-    """
+# ==============================================================
+# COMPUTATION FUNCTIONS
+# ==============================================================
+def calculate_heat_duty(stream_name, spec):
     fluid = spec['fluid']
-    T_in = spec['T_in_C']
-    T_out = spec['T_out_C']
-    P_bara = spec['P_operating_bara']
+    m_dot = Nm3h_to_kgs(spec['total_flowrate_Nm3h'], fluid)
     total_flow = spec['total_flowrate_Nm3h']
 
-    # Mass flow rate
-    m_dot = Nm3h_to_kgs(total_flow, fluid)
-
-    details = []
-
-    # --- Determine inlet enthalpy ---
-    vap_in = spec['vapor_in_Nm3h']
-    liq_in = spec['liquid_in_Nm3h']
-
-    if liq_in > 0 and vap_in == 0:
-        # Pure liquid inlet (e.g., GOX)
-        h_in = get_specific_enthalpy(fluid, T_in, P_bara, phase='liquid')
-        details.append(f"Inlet: pure liquid at {T_in}°C")
-    elif liq_in > 0 and vap_in > 0:
-        # Mixed inlet — weighted average
-        frac_vap = vap_in / total_flow
-        frac_liq = liq_in / total_flow
-        h_vap = get_specific_enthalpy(fluid, T_in, P_bara, phase='gas')
-        h_liq = get_specific_enthalpy(fluid, T_in, P_bara, phase='liquid')
-        h_in = frac_vap * h_vap + frac_liq * h_liq
-        details.append(f"Inlet: mixed (vap={frac_vap:.2f}, liq={frac_liq:.2f})")
+    # Inlet enthalpy
+    if spec['liquid_in_Nm3h'] > 0 and spec['vapor_in_Nm3h'] == 0:
+        h_in = get_specific_enthalpy(fluid, spec['T_in_C'], spec['P_operating_bara'], 'liquid')
+    elif spec['liquid_in_Nm3h'] > 0 and spec['vapor_in_Nm3h'] > 0:
+        fv = spec['vapor_in_Nm3h'] / total_flow
+        fl = spec['liquid_in_Nm3h'] / total_flow
+        hv = get_specific_enthalpy(fluid, spec['T_in_C'], spec['P_operating_bara'], 'gas')
+        hl = get_specific_enthalpy(fluid, spec['T_in_C'], spec['P_operating_bara'], 'liquid')
+        h_in = fv * hv + fl * hl if hv and hl else None
     else:
-        # Pure vapor inlet
-        h_in = get_specific_enthalpy(fluid, T_in, P_bara, phase='gas')
-        details.append(f"Inlet: pure vapor at {T_in}°C")
+        h_in = get_specific_enthalpy(fluid, spec['T_in_C'], spec['P_operating_bara'], 'gas')
 
-    # --- Determine outlet enthalpy ---
-    vap_out = spec['vapor_out_Nm3h']
-    liq_out = spec['liquid_out_Nm3h']
-
-    if liq_out > 0 and vap_out == 0:
-        # Pure liquid outlet (e.g., AGHP fully condensed)
-        h_out = get_specific_enthalpy(fluid, T_out, P_bara, phase='liquid')
-        details.append(f"Outlet: pure liquid at {T_out}°C")
-    elif liq_out > 0 and vap_out > 0:
-        # Mixed outlet (e.g., AGMP: small liquid fraction)
-        frac_vap = vap_out / total_flow
-        frac_liq = liq_out / total_flow
-        h_vap = get_specific_enthalpy(fluid, T_out, P_bara, phase='gas')
-        h_liq = get_specific_enthalpy(fluid, T_out, P_bara, phase='liquid')
-        h_out = frac_vap * h_vap + frac_liq * h_liq
-        details.append(f"Outlet: mixed (vap={frac_vap:.2f}, liq={frac_liq:.2f})")
+    # Outlet enthalpy
+    if spec['liquid_out_Nm3h'] > 0 and spec['vapor_out_Nm3h'] == 0:
+        h_out = get_specific_enthalpy(fluid, spec['T_out_C'], spec['P_operating_bara'], 'liquid')
+    elif spec['liquid_out_Nm3h'] > 0 and spec['vapor_out_Nm3h'] > 0:
+        fv = spec['vapor_out_Nm3h'] / total_flow
+        fl = spec['liquid_out_Nm3h'] / total_flow
+        hv = get_specific_enthalpy(fluid, spec['T_out_C'], spec['P_operating_bara'], 'gas')
+        hl = get_specific_enthalpy(fluid, spec['T_out_C'], spec['P_operating_bara'], 'liquid')
+        h_out = fv * hv + fl * hl if hv and hl else None
     else:
-        # Pure vapor outlet
-        h_out = get_specific_enthalpy(fluid, T_out, P_bara, phase='gas')
-        details.append(f"Outlet: pure vapor at {T_out}°C")
+        h_out = get_specific_enthalpy(fluid, spec['T_out_C'], spec['P_operating_bara'], 'gas')
 
-    # Heat duty
-    if h_in is not None and h_out is not None:
-        Q_watts = m_dot * abs(h_out - h_in)
-        Q_kcalh = Q_watts * 3600 / 4184  # W to kcal/h
-    else:
-        Q_watts = None
-        Q_kcalh = None
-        details.append("❌ Could not compute enthalpy")
+    Q_W = m_dot * abs(h_out - h_in) if h_in and h_out else None
+    Q_kcal = Q_W * 3600 / 4184 if Q_W else None
 
-    return {
-        'stream': stream_name,
-        'm_dot_kgs': m_dot,
-        'h_in_Jkg': h_in,
-        'h_out_Jkg': h_out,
-        'Q_watts': Q_watts,
-        'Q_kcalh': Q_kcalh,
-        'Q_design_kcalh': spec['heat_duty_kcalh'],
-        'details': details
-    }
+    return {'m_dot': m_dot, 'Q_W': Q_W, 'Q_kcalh': Q_kcal, 'h_in': h_in, 'h_out': h_out}
 
-# From Cell 7: Helper function for efficiency computation (originally inside run_simulation)
-def compute_efficiency_for_case(case_specs):
-    """
-    Given a modified set of specs, compute heat duties and effectiveness.
-    Returns dict with per-stream Q, overall eps, and deviations.
-    """
+
+def compute_full_case(specs):
     results = {}
-    for name, spec in case_specs.items():
-        results[name] = calculate_heat_duty_enthalpy(name, spec)
+    for name, spec in specs.items():
+        results[name] = calculate_heat_duty(name, spec)
 
-    # Temperature effectiveness
-    hot_T_in_max = max(s['T_in_C'] for s in case_specs.values() if s['stream_type'] == 'hot')
-    cold_T_in_min = min(s['T_in_C'] for s in case_specs.values() if s['stream_type'] == 'cold')
-    delta_T_max = hot_T_in_max - cold_T_in_min
+    hot_T_max = max(specs[s]['T_in_C'] for s in specs if specs[s]['stream_type'] == 'hot')
+    cold_T_min = min(specs[s]['T_in_C'] for s in specs if specs[s]['stream_type'] == 'cold')
+    dT_max = hot_T_max - cold_T_min
 
-    eps_per_stream = {}
-    for name, spec in case_specs.items():
+    eps_per = {}
+    for name, spec in specs.items():
         dT = abs(spec['T_out_C'] - spec['T_in_C'])
-        eps_per_stream[name] = dT / delta_T_max if delta_T_max > 0 else 0
+        eps_per[name] = dT / dT_max if dT_max > 0 else 0
 
-    eps_overall = np.mean(list(eps_per_stream.values()))
+    eps_overall = np.mean(list(eps_per.values()))
+    Q_hot = sum(results[n]['Q_kcalh'] for n in specs if specs[n]['stream_type'] == 'hot' and results[n]['Q_kcalh'])
+    Q_cold = sum(results[n]['Q_kcalh'] for n in specs if specs[n]['stream_type'] == 'cold' and results[n]['Q_kcalh'])
 
-    Q_hot = sum(results[n]['Q_kcalh'] for n in case_specs
-                if case_specs[n]['stream_type'] == 'hot' and results[n]['Q_kcalh'])
-    Q_cold = sum(results[n]['Q_kcalh'] for n in case_specs
-                 if case_specs[n]['stream_type'] == 'cold' and results[n]['Q_kcalh'])
-
-    return {
-        'results': results,
-        'eps_per_stream': eps_per_stream,
-        'eps_overall': eps_overall,
-        'Q_hot_total': Q_hot,
-        'Q_cold_total': Q_cold
-    }
+    return {'results': results, 'eps_per': eps_per, 'eps_overall': eps_overall,
+            'Q_hot': Q_hot, 'Q_cold': Q_cold, 'dT_max': dT_max}
 
 
-# From Cell 8: Analyze plant data against design
-def analyze_plant_vs_design(plant_data, design_specs, design_baseline):
-    """
-    Compare plant operating data against design baseline.
-    Returns detailed comparison DataFrame.
-    """
-    # Compute plant heat duties
-    plant_case = compute_efficiency_for_case(plant_data)
-
-    comparison = []
+def run_root_cause(design_specs, plant_data, eps_design, eps_plant):
+    root_causes = []
     for name in design_specs.keys():
-        d = design_baseline['per_stream'][name]
-        p_result = plant_case['results'][name]
+        d_spec = design_specs[name]
         p_spec = plant_data[name]
 
-        # Flow deviation
-        flow_dev = ((p_spec['total_flowrate_Nm3h'] - d['flowrate_Nm3h']) / d['flowrate_Nm3h'] * 100)
+        # Flow effect
+        case_f = copy.deepcopy(design_specs)
+        case_f[name]['total_flowrate_Nm3h'] = p_spec['total_flowrate_Nm3h']
+        if d_spec['total_flowrate_Nm3h'] > 0:
+            r = p_spec['total_flowrate_Nm3h'] / d_spec['total_flowrate_Nm3h']
+            for k in ['vapor_in_Nm3h', 'vapor_out_Nm3h', 'liquid_in_Nm3h', 'liquid_out_Nm3h']:
+                case_f[name][k] = d_spec[k] * r
+        dev_f = (compute_full_case(case_f)['eps_overall'] - eps_design) / eps_design * 100
 
-        # Temperature deviations
-        T_in_dev = p_spec['T_in_C'] - d['T_in_C']
-        T_out_dev = p_spec['T_out_C'] - d['T_out_C']
+        # Tin effect
+        case_t = copy.deepcopy(design_specs)
+        case_t[name]['T_in_C'] = p_spec['T_in_C']
+        dev_t = (compute_full_case(case_t)['eps_overall'] - eps_design) / eps_design * 100
 
-        # Duty deviation
-        q_plant = p_result['Q_kcalh']
-        q_design = d['Q_design_kcalh']
-        duty_dev = ((q_plant - q_design) / q_design * 100) if q_plant else None
+        # Tout effect
+        case_o = copy.deepcopy(design_specs)
+        case_o[name]['T_out_C'] = p_spec['T_out_C']
+        dev_o = (compute_full_case(case_o)['eps_overall'] - eps_design) / eps_design * 100
 
-        # Duty ratio (plant actual / design)
-        duty_ratio = q_plant / q_design if q_plant else None
+        # Combined
+        case_c = copy.deepcopy(design_specs)
+        case_c[name] = copy.deepcopy(p_spec)
+        dev_c = (compute_full_case(case_c)['eps_overall'] - eps_design) / eps_design * 100
 
-        comparison.append({
+        root_causes.append({
+            'Stream': name, 'Type': d_spec['stream_type'],
+            'Flow Δ (%)': round((p_spec['total_flowrate_Nm3h'] - d_spec['total_flowrate_Nm3h']) / d_spec['total_flowrate_Nm3h'] * 100, 2),
+            'Tin Δ (°C)': round(p_spec['T_in_C'] - d_spec['T_in_C'], 1),
+            'Tout Δ (°C)': round(p_spec['T_out_C'] - d_spec['T_out_C'], 1),
+            'ε impact: Flow (%)': round(dev_f, 4),
+            'ε impact: Tin (%)': round(dev_t, 4),
+            'ε impact: Tout (%)': round(dev_o, 4),
+            'ε impact: Combined (%)': round(dev_c, 4),
+        })
+    return pd.DataFrame(root_causes)
+
+
+def run_optimization(design_specs, plant_data, eps_design):
+    from scipy.optimize import differential_evolution
+    stream_names = list(design_specs.keys())
+
+    def objective(x):
+        case = copy.deepcopy(plant_data)
+        for i, name in enumerate(stream_names):
+            case[name]['T_in_C'] = plant_data[name]['T_in_C'] + x[i]
+            ff = 1 + x[i + 6] / 100
+            case[name]['total_flowrate_Nm3h'] = plant_data[name]['total_flowrate_Nm3h'] * ff
+            for k in ['vapor_in_Nm3h', 'vapor_out_Nm3h', 'liquid_in_Nm3h', 'liquid_out_Nm3h']:
+                case[name][k] = plant_data[name][k] * ff
+
+        hot_T = max(case[s]['T_in_C'] for s in case if case[s]['stream_type'] == 'hot')
+        cold_T = min(case[s]['T_in_C'] for s in case if case[s]['stream_type'] == 'cold')
+        dT = hot_T - cold_T
+        if dT <= 0: return 1e6
+        eps_vals = [abs(case[n]['T_out_C'] - case[n]['T_in_C']) / dT for n in stream_names]
+        eps_o = np.mean(eps_vals)
+        penalty = 5000 * (eps_o - eps_design) ** 2
+        cost = sum(x[i]**2 for i in range(6)) + sum(x[i+6]**2 for i in range(6))
+        return cost + penalty
+
+    bounds = ([(-15, 15)] * 6) + ([(-15, 15)] * 6)
+    result = differential_evolution(objective, bounds, seed=42, maxiter=500, tol=1e-12, popsize=30)
+    x = result.x
+
+    recs = []
+    for i, name in enumerate(stream_names):
+        tin_adj = x[i]
+        flow_adj = x[i + 6]
+        recs.append({
             'Stream': name,
             'Type': design_specs[name]['stream_type'],
-            'Flow_design': d['flowrate_Nm3h'],
-            'Flow_plant': p_spec['total_flowrate_Nm3h'],
-            'Flow_dev (%)': round(flow_dev, 2),
-            'Tin_design': d['T_in_C'],
-            'Tin_plant': p_spec['T_in_C'],
-            'Tin_dev (°C)': T_in_dev,
-            'Tout_design': d['T_out_C'],
-            'Tout_plant': p_spec['T_out_C'],
-            'Tout_dev (°C)': T_out_dev,
-            'Q_design (kcal/h)': q_design,
-            'Q_plant (kcal/h)': round(q_plant, 0) if q_plant else None,
-            'Duty_dev (%)': round(duty_dev, 2) if duty_dev else None,
-            'Duty_ratio': round(duty_ratio, 4) if duty_ratio else None
+            'Tin current (°C)': plant_data[name]['T_in_C'],
+            'Tin adjust (°C)': round(tin_adj, 2),
+            'Tin target (°C)': round(plant_data[name]['T_in_C'] + tin_adj, 2),
+            'Tin design (°C)': design_specs[name]['T_in_C'],
+            'Flow current': plant_data[name]['total_flowrate_Nm3h'],
+            'Flow adjust (%)': round(flow_adj, 2),
+            'Flow target': round(plant_data[name]['total_flowrate_Nm3h'] * (1 + flow_adj/100), 0),
+            'Flow design': design_specs[name]['total_flowrate_Nm3h'],
+            'Feasible': '✅' if abs(tin_adj) < 10 and abs(flow_adj) < 8 else '⚠️'
+        })
+    return pd.DataFrame(recs), result.success
+
+
+# ==============================================================
+# COMPUTE DESIGN BASELINE (cached)
+# ==============================================================
+@st.cache_data
+def get_design_baseline():
+    case = compute_full_case(DESIGN_SPECS)
+    return case['eps_overall'], case
+
+
+design_eps, design_case = get_design_baseline()
+
+
+# ==============================================================
+# SIDEBAR — Plant Data Input
+# ==============================================================
+st.sidebar.markdown("## 🏭 Plant Operating Data")
+st.sidebar.markdown("Enter current plant values below.")
+st.sidebar.markdown("---")
+
+plant_data = copy.deepcopy(DESIGN_SPECS)
+
+stream_colors = {
+    'AGMP': '🔴', 'AGHP': '🟠', 'AGT': '🟡',
+    'GOX': '🔵', 'GAN': '🟢', 'WN2': '🟣'
+}
+
+for name in DESIGN_SPECS.keys():
+    spec = DESIGN_SPECS[name]
+    st.sidebar.markdown(f"### {stream_colors[name]} {name} ({spec['fluid']}, {spec['stream_type']})")
+
+    col1, col2 = st.sidebar.columns(2)
+    with col1:
+        flow = st.number_input(
+            f"Flow (Nm³/h)", value=float(spec['total_flowrate_Nm3h']),
+            step=100.0, key=f"flow_{name}", format="%.0f"
+        )
+        t_in = st.number_input(
+            f"T_in (°C)", value=float(spec['T_in_C']),
+            step=0.5, key=f"tin_{name}", format="%.1f"
+        )
+    with col2:
+        t_out = st.number_input(
+            f"T_out (°C)", value=float(spec['T_out_C']),
+            step=0.5, key=f"tout_{name}", format="%.1f"
+        )
+        dp = st.number_input(
+            f"ΔP (mbar)", value=float(spec['pressure_drop_mbar']),
+            step=5.0, key=f"dp_{name}", format="%.0f"
+        )
+
+    plant_data[name]['total_flowrate_Nm3h'] = flow
+    plant_data[name]['T_in_C'] = t_in
+    plant_data[name]['T_out_C'] = t_out
+    plant_data[name]['pressure_drop_mbar'] = dp
+
+    # Scale vapor/liquid flows proportionally
+    if spec['total_flowrate_Nm3h'] > 0:
+        ratio = flow / spec['total_flowrate_Nm3h']
+        for k in ['vapor_in_Nm3h', 'vapor_out_Nm3h', 'liquid_in_Nm3h', 'liquid_out_Nm3h']:
+            plant_data[name][k] = spec[k] * ratio
+
+    st.sidebar.markdown("---")
+
+
+# ==============================================================
+# MAIN CONTENT
+# ==============================================================
+st.markdown('<div class="main-header">🔥 Heat Exchanger Efficiency Analyzer</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-header">Spec Sheet N° 4351-1 · Counter-Flow Plate-Fin · JSPL India · Main HX (ASU)</div>', unsafe_allow_html=True)
+
+# --- Compute plant case ---
+plant_case = compute_full_case(plant_data)
+eps_plant = plant_case['eps_overall']
+efficiency = (eps_plant / design_eps) * 100
+deviation = efficiency - 100
+
+# ==============================================================
+# TAB LAYOUT
+# ==============================================================
+tab1, tab2, tab3, tab4 = st.tabs([
+    "📊 Efficiency & Effectiveness",
+    "🔍 Root Cause Analysis",
+    "🎯 Suggested Adjustments",
+    "📋 Design Reference"
+])
+
+
+# ==============================================================
+# TAB 1: EFFICIENCY & EFFECTIVENESS
+# ==============================================================
+with tab1:
+    # KPI Cards
+    c1, c2, c3, c4 = st.columns(4)
+
+    dev_class = "good" if abs(deviation) < 1 else "warn" if abs(deviation) < 3 else "bad"
+    eff_class = "good" if efficiency > 99 else "warn" if efficiency > 97 else "bad"
+
+    with c1:
+        st.markdown(f"""<div class="metric-card">
+            <div class="metric-label">Overall Effectiveness (ε)</div>
+            <div class="metric-value">{eps_plant:.4f}</div>
+            <div style="color:#64748b;font-size:0.85rem;">Design: {design_eps:.4f}</div>
+        </div>""", unsafe_allow_html=True)
+
+    with c2:
+        st.markdown(f"""<div class="metric-card">
+            <div class="metric-label">Efficiency</div>
+            <div class="metric-value {eff_class}">{efficiency:.2f}%</div>
+            <div style="color:#64748b;font-size:0.85rem;">Design = 100%</div>
+        </div>""", unsafe_allow_html=True)
+
+    with c3:
+        st.markdown(f"""<div class="metric-card">
+            <div class="metric-label">Deviation</div>
+            <div class="metric-value {dev_class}">{deviation:+.2f}%</div>
+            <div style="color:#64748b;font-size:0.85rem;">Target: 0%</div>
+        </div>""", unsafe_allow_html=True)
+
+    with c4:
+        bal_err = abs(plant_case['Q_hot'] - plant_case['Q_cold']) / max(plant_case['Q_hot'], plant_case['Q_cold']) * 100
+        bal_class = "good" if bal_err < 3 else "warn" if bal_err < 8 else "bad"
+        st.markdown(f"""<div class="metric-card">
+            <div class="metric-label">Energy Balance Error</div>
+            <div class="metric-value {bal_class}">{bal_err:.1f}%</div>
+            <div style="color:#64748b;font-size:0.85rem;">Q_hot vs Q_cold</div>
+        </div>""", unsafe_allow_html=True)
+
+    st.markdown("")
+
+    # Per-stream comparison table
+    st.markdown('<div class="section-title">Per-Stream Comparison</div>', unsafe_allow_html=True)
+
+    rows = []
+    for name in DESIGN_SPECS.keys():
+        d = DESIGN_SPECS[name]
+        p = plant_data[name]
+        pr = plant_case['results'][name]
+        q_p = pr['Q_kcalh']
+        q_d = d['heat_duty_kcalh']
+        duty_dev = ((q_p - q_d) / q_d * 100) if q_p else None
+
+        rows.append({
+            'Stream': name,
+            'Type': d['stream_type'].upper(),
+            'Flow Plant': f"{p['total_flowrate_Nm3h']:,.0f}",
+            'Flow Design': f"{d['total_flowrate_Nm3h']:,.0f}",
+            'Tin Plant (°C)': p['T_in_C'],
+            'Tin Design (°C)': d['T_in_C'],
+            'Tout Plant (°C)': p['T_out_C'],
+            'Tout Design (°C)': d['T_out_C'],
+            'Q Plant (kcal/h)': f"{q_p:,.0f}" if q_p else "N/A",
+            'Q Design (kcal/h)': f"{q_d:,.0f}",
+            'Duty Dev (%)': f"{duty_dev:+.2f}" if duty_dev else "N/A",
+            'ε Stream': f"{plant_case['eps_per'][name]:.4f}"
         })
 
-    df_comp = pd.DataFrame(comparison)
+    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
-    # Overall
-    eps_plant = plant_case['eps_overall']
-    eps_design = design_baseline['eps_overall']
-    eps_dev = ((eps_plant - eps_design) / eps_design) * 100
+    # Charts
+    col_l, col_r = st.columns(2)
 
-    # Overall efficiency percentage (design = 100%)
-    overall_efficiency = (eps_plant / eps_design) * 100
+    with col_l:
+        fig = go.Figure()
+        streams = list(DESIGN_SPECS.keys())
+        q_d = [DESIGN_SPECS[s]['heat_duty_kcalh']/1e6 for s in streams]
+        q_p = [plant_case['results'][s]['Q_kcalh']/1e6 if plant_case['results'][s]['Q_kcalh'] else 0 for s in streams]
+        fig.add_trace(go.Bar(name='Design', x=streams, y=q_d, marker_color='#3b82f6'))
+        fig.add_trace(go.Bar(name='Plant', x=streams, y=q_p, marker_color='#f97316'))
+        fig.update_layout(title='Heat Duty Comparison (×10⁶ kcal/h)', barmode='group',
+                         height=380, template='plotly_white',
+                         font=dict(family='DM Sans'), margin=dict(t=40, b=40))
+        st.plotly_chart(fig, use_container_width=True)
 
-    return df_comp, eps_plant, overall_efficiency
-
-
-# ============================================================
-# Streamlit UI for user inputs
-# ============================================================
-
-st.header("1. Enter Current Plant Operating Data")
-st.markdown("Adjust the sliders or type in the values for each stream's flowrate and temperatures.")
-
-plant_data = copy.deepcopy(design_specs)
-
-# Create tabs for Hot and Cold streams
-hot_streams = [s for s, spec in design_specs.items() if spec['stream_type'] == 'hot']
-cold_streams = [s for s, spec in design_specs.items() if spec['stream_type'] == 'cold']
-
-hot_tab, cold_tab = st.tabs(["Hot Streams", "Cold Streams"])
-
-# Hot Streams input
-with hot_tab:
-    st.subheader("Hot Streams (Cooling)")
-    for stream_name in hot_streams:
-        spec = design_specs[stream_name]
-        with st.expander(f"**{stream_name}** (Design: {spec['T_in_C']}°C in, {spec['T_out_C']}°C out, {spec['total_flowrate_Nm3h']} Nm³/h)"):
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                plant_data[stream_name]['total_flowrate_Nm3h'] = st.number_input(
-                    f"Flowrate (Nm³/h) for {stream_name}",
-                    min_value=0.0,
-                    max_value=float(spec['total_flowrate_Nm3h'] * 1.5),
-                    value=float(plant_data[stream_name]['total_flowrate_Nm3h']),
-                    step=10.0,
-                    format="%.1f",
-                    key=f"flow_{stream_name}"
-                )
-            with col2:
-                plant_data[stream_name]['T_in_C'] = st.number_input(
-                    f"Inlet Temp (°C) for {stream_name}",
-                    min_value=-200.0,
-                    max_value=100.0,
-                    value=float(plant_data[stream_name]['T_in_C']),
-                    step=0.1,
-                    format="%.1f",
-                    key=f"Tin_{stream_name}"
-                )
-            with col3:
-                plant_data[stream_name]['T_out_C'] = st.number_input(
-                    f"Outlet Temp (°C) for {stream_name}",
-                    min_value=-200.0,
-                    max_value=100.0,
-                    value=float(plant_data[stream_name]['T_out_C']),
-                    step=0.1,
-                    format="%.1f",
-                    key=f"Tout_{stream_name}"
-                )
-            # Update vapor/liquid flowrates proportionally for calculation
-            flow_ratio = plant_data[stream_name]['total_flowrate_Nm3h'] / spec['total_flowrate_Nm3h'] if spec['total_flowrate_Nm3h'] != 0 else 0
-            for key_suffix in ['vapor_in_Nm3h', 'vapor_out_Nm3h', 'liquid_in_Nm3h', 'liquid_out_Nm3h']:
-                original_key = key_suffix #f'{key_suffix}_{stream_name}' # this logic is not needed, original key is enough
-                if original_key in spec:
-                    plant_data[stream_name][original_key] = spec[original_key] * flow_ratio
-
-# Cold Streams input
-with cold_tab:
-    st.subheader("Cold Streams (Heating)")
-    for stream_name in cold_streams:
-        spec = design_specs[stream_name]
-        with st.expander(f"**{stream_name}** (Design: {spec['T_in_C']}°C in, {spec['T_out_C']}°C out, {spec['total_flowrate_Nm3h']} Nm³/h)"):
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                plant_data[stream_name]['total_flowrate_Nm3h'] = st.number_input(
-                    f"Flowrate (Nm³/h) for {stream_name}",
-                    min_value=0.0,
-                    max_value=float(spec['total_flowrate_Nm3h'] * 1.5),
-                    value=float(plant_data[stream_name]['total_flowrate_Nm3h']),
-                    step=10.0,
-                    format="%.1f",
-                    key=f"flow_{stream_name}"
-                )
-            with col2:
-                plant_data[stream_name]['T_in_C'] = st.number_input(
-                    f"Inlet Temp (°C) for {stream_name}",
-                    min_value=-200.0,
-                    max_value=100.0,
-                    value=float(plant_data[stream_name]['T_in_C']),
-                    step=0.1,
-                    format="%.1f",
-                    key=f"Tin_{stream_name}"
-                )
-            with col3:
-                plant_data[stream_name]['T_out_C'] = st.number_input(
-                    f"Outlet Temp (°C) for {stream_name}",
-                    min_value=-200.0,
-                    max_value=100.0,
-                    value=float(plant_data[stream_name]['T_out_C']),
-                    step=0.1,
-                    format="%.1f",
-                    key=f"Tout_{stream_name}"
-                )
-            # Update vapor/liquid flowrates proportionally for calculation
-            flow_ratio = plant_data[stream_name]['total_flowrate_Nm3h'] / spec['total_flowrate_Nm3h'] if spec['total_flowrate_Nm3h'] != 0 else 0
-            for key_suffix in ['vapor_in_Nm3h', 'vapor_out_Nm3h', 'liquid_in_Nm3h', 'liquid_out_Nm3h']:
-                original_key = key_suffix #f'{key_suffix}_{stream_name}'
-                if original_key in spec:
-                    plant_data[stream_name][original_key] = spec[original_key] * flow_ratio
+    with col_r:
+        fig2 = go.Figure()
+        colors_map = {'AGMP': '#ef4444', 'AGHP': '#f97316', 'AGT': '#eab308',
+                      'GOX': '#3b82f6', 'GAN': '#22c55e', 'WN2': '#a855f7'}
+        for s in streams:
+            fig2.add_trace(go.Scatter(
+                x=['Inlet', 'Outlet'],
+                y=[plant_data[s]['T_in_C'], plant_data[s]['T_out_C']],
+                mode='lines+markers', name=s,
+                line=dict(width=3, color=colors_map[s]),
+                marker=dict(size=10)
+            ))
+        fig2.update_layout(title='Temperature Profiles', yaxis_title='Temperature (°C)',
+                          height=380, template='plotly_white',
+                          font=dict(family='DM Sans'), margin=dict(t=40, b=40))
+        st.plotly_chart(fig2, use_container_width=True)
 
 
-# ============================================================
-# Design Baseline (from Cell 6)
-# ============================================================
-# Calculate design effectiveness for baseline
-# This part needs to be computed once to set the baseline
+# ==============================================================
+# TAB 2: ROOT CAUSE ANALYSIS
+# ==============================================================
+with tab2:
+    st.markdown('<div class="section-title">Root Cause Decomposition</div>', unsafe_allow_html=True)
 
-if 'design_baseline' not in st.session_state:
-    st.session_state.design_baseline = {}
+    with st.spinner("Running sensitivity analysis..."):
+        df_rc = run_root_cause(DESIGN_SPECS, plant_data, design_eps, eps_plant)
 
-    # Temporarily compute design results using original design_specs
-    design_results = {}
-    for name, spec in design_specs.items():
-        design_results[name] = calculate_heat_duty_enthalpy(name, spec)
+    # Summary metrics
+    total_flow_eff = df_rc['ε impact: Flow (%)'].sum()
+    total_tin_eff = df_rc['ε impact: Tin (%)'].sum()
+    total_tout_eff = df_rc['ε impact: Tout (%)'].sum()
 
-    # Overall effectiveness for design
-    design_case = compute_efficiency_for_case(design_specs)
-    eps_design = design_case['eps_overall']
-    Q_hot_design = design_case['Q_hot_total']
-    Q_cold_design = design_case['Q_cold_total']
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.metric("Flowrate Effect", f"{total_flow_eff:+.4f}%")
+    with c2:
+        st.metric("Inlet Temp Effect", f"{total_tin_eff:+.4f}%")
+    with c3:
+        st.metric("Outlet Temp Effect", f"{total_tout_eff:+.4f}%")
 
-    design_baseline = {
-        'eps_overall': eps_design,
-        'Q_hot_total_kcalh': Q_hot_design,
-        'Q_cold_total_kcalh': Q_cold_design,
-        'per_stream': {}
-    }
+    # Dominant factor
+    factors = {'Flowrate': abs(total_flow_eff), 'Inlet Temperature': abs(total_tin_eff),
+               'Outlet Temperature': abs(total_tout_eff)}
+    dominant = max(factors, key=factors.get)
+    st.info(f"🎯 **Dominant Factor:** {dominant} changes")
 
-    for name, spec in design_specs.items():
-        res = design_results[name]
-        design_baseline['per_stream'][name] = {
-            'Q_design_kcalh': spec['heat_duty_kcalh'],
-            'Q_calc_kcalh': res['Q_kcalh'], # Q_calc is Q_design as per Cell 4 output
-            'T_in_C': spec['T_in_C'],
-            'T_out_C': spec['T_out_C'],
-            'flowrate_Nm3h': spec['total_flowrate_Nm3h'],
-            'pressure_drop_mbar': spec['pressure_drop_mbar'],
-            'P_operating_bara': spec['P_operating_bara']
-        }
-    st.session_state.design_baseline = design_baseline
+    # Table
+    st.dataframe(df_rc.sort_values('ε impact: Combined (%)', key=abs, ascending=False),
+                 use_container_width=True, hide_index=True)
 
-# Retrieve design_baseline from session_state
-design_baseline = st.session_state.design_baseline
-
-# ============================================================
-# Analysis & Results
-# ============================================================
-
-st.header("2. Performance Analysis")
-
-df_comparison, eps_plant, overall_eff = analyze_plant_vs_design(plant_data, design_specs, design_baseline)
-
-# Display Overall Efficiency
-st.subheader("Overall Heat Exchanger Efficiency")
-col_eff1, col_eff2, col_eff3 = st.columns(3)
-with col_eff1:
-    st.metric(label="Design Overall Effectiveness (ε)", value=f"{design_baseline['eps_overall']:.4f}")
-with col_eff2:
-    st.metric(label="Plant Overall Effectiveness (ε)", value=f"{eps_plant:.4f}")
-with col_eff3:
-    st.metric(label="Overall Efficiency (% of Design)", value=f"{overall_eff:.2f}%", delta=f"{overall_eff - 100:+.2f}%")
-
-# Display Detailed Per-Stream Comparison
-st.subheader("Detailed Per-Stream Comparison (Plant vs. Design)")
-st.dataframe(df_comparison[[
-    'Stream', 'Type', 
-    'Flow_plant', 'Flow_design', 'Flow_dev (%)',
-    'Tin_plant', 'Tin_design', 'Tin_dev (°C)',
-    'Tout_plant', 'Tout_design', 'Tout_dev (°C)',
-    'Q_plant (kcal/h)', 'Q_design (kcal/h)', 'Duty_dev (%)'
-]])
-
-# ============================================================
-# Visualizations
-# ============================================================
-
-st.header("3. Visualizations")
-
-import matplotlib.pyplot as plt
-
-streams = list(design_specs.keys())
-
-# Plot 1: Per-stream Heat Duty Comparison
-st.subheader("Heat Duty: Plant vs. Design")
-fig1, ax1 = plt.subplots(figsize=(10, 5))
-
-q_design_vals = [design_baseline['per_stream'][s]['Q_design_kcalh'] / 1e6 for s in streams]
-q_plant_vals = [df_comparison[df_comparison['Stream'] == s]['Q_plant (kcal/h)'].values[0] / 1e6 if not pd.isna(df_comparison[df_comparison['Stream'] == s]['Q_plant (kcal/h)'].values[0]) else 0 for s in streams]
-
-x = np.arange(len(streams))
-width = 0.35
-ax1.bar(x - width/2, q_design_vals, width, label='Design', color='steelblue', alpha=0.8)
-ax1.bar(x + width/2, q_plant_vals, width, label='Plant (Current)', color='coral', alpha=0.8)
-ax1.set_xlabel('Stream')
-ax1.set_ylabel('Heat Duty (x10^6 kcal/h)')
-ax1.set_title('Per-Stream Heat Duty Comparison')
-ax1.set_xticks(x)
-ax1.set_xticklabels(streams)
-ax1.legend()
-ax1.grid(axis='y', alpha=0.3)
-st.pyplot(fig1)
+    # Ranked chart
+    df_sorted = df_rc.sort_values('ε impact: Combined (%)', key=abs, ascending=True)
+    fig_rc = go.Figure()
+    fig_rc.add_trace(go.Bar(
+        y=df_sorted['Stream'],
+        x=df_sorted['ε impact: Flow (%)'],
+        name='Flow', orientation='h', marker_color='#3b82f6'
+    ))
+    fig_rc.add_trace(go.Bar(
+        y=df_sorted['Stream'],
+        x=df_sorted['ε impact: Tin (%)'],
+        name='Inlet Temp', orientation='h', marker_color='#f97316'
+    ))
+    fig_rc.add_trace(go.Bar(
+        y=df_sorted['Stream'],
+        x=df_sorted['ε impact: Tout (%)'],
+        name='Outlet Temp', orientation='h', marker_color='#22c55e'
+    ))
+    fig_rc.update_layout(barmode='group', title='ε Impact Decomposition by Stream',
+                        xaxis_title='ε Deviation (%)', height=400, template='plotly_white',
+                        font=dict(family='DM Sans'), margin=dict(t=40, b=40, l=80))
+    st.plotly_chart(fig_rc, use_container_width=True)
 
 
-# Plot 2: Per-stream Duty Deviation
-st.subheader("Per-Stream Heat Duty Deviation from Design")
-fig2, ax2 = plt.subplots(figsize=(10, 5))
+# ==============================================================
+# TAB 3: SUGGESTED ADJUSTMENTS
+# ==============================================================
+with tab3:
+    st.markdown('<div class="section-title">Recommended Inlet Adjustments</div>', unsafe_allow_html=True)
+    st.markdown("These are the **minimum changes to controllable inputs** (inlet temps & flowrates) to reach design efficiency.")
 
-duty_devs = [df_comparison[df_comparison['Stream'] == s]['Duty_dev (%)'].values[0] if not pd.isna(df_comparison[df_comparison['Stream'] == s]['Duty_dev (%)'].values[0]) else 0 for s in streams]
-
-# Color bars based on deviation
-bar_colors = []
-for dev in duty_devs:
-    if abs(dev) < 5: # Within 5%
-        bar_colors.append('green')
-    elif abs(dev) < 10: # Within 10%
-        bar_colors.append('orange')
+    if abs(deviation) < 0.05:
+        st.markdown('<div class="action-box-good">✅ <b>Plant is already at design efficiency!</b> No adjustments needed.</div>',
+                   unsafe_allow_html=True)
     else:
-        bar_colors.append('red')
+        with st.spinner("Running optimizer (this may take 10-20 seconds)..."):
+            df_opt, converged = run_optimization(DESIGN_SPECS, plant_data, design_eps)
 
-ax2.bar(streams, duty_devs, color=bar_colors, alpha=0.8)
-ax2.axhline(0, color='grey', linestyle='--', linewidth=0.8)
-ax2.axhline(5, color='green', linestyle=':', alpha=0.6, label='±5% acceptable')
-ax2.axhline(-5, color='green', linestyle=':', alpha=0.6)
-ax2.axhline(10, color='orange', linestyle=':', alpha=0.6, label='±10% warning')
-ax2.axhline(-10, color='orange', linestyle=':', alpha=0.6)
+        if converged:
+            st.success("Optimizer converged successfully.")
+        else:
+            st.warning("Optimizer did not fully converge. Results are approximate.")
 
-ax2.set_xlabel('Stream')
-ax2.set_ylabel('Duty Deviation (%)')
-ax2.set_title('Heat Duty Deviation (%) from Design for Each Stream')
-ax2.legend()
-ax2.grid(axis='y', alpha=0.3)
-st.pyplot(fig2)
+        st.dataframe(df_opt, use_container_width=True, hide_index=True)
+
+        # Action summary
+        st.markdown('<div class="section-title">Action Summary</div>', unsafe_allow_html=True)
+
+        for _, row in df_opt.iterrows():
+            tin_adj = row['Tin adjust (°C)']
+            flow_adj = row['Flow adjust (%)']
+            name = row['Stream']
+
+            if abs(tin_adj) < 0.5 and abs(flow_adj) < 0.5:
+                st.markdown(f'<div class="action-box-good">✅ <b>{name}</b> — No significant adjustment needed</div>',
+                           unsafe_allow_html=True)
+            else:
+                actions = []
+                if abs(tin_adj) > 0.5:
+                    d = "Increase" if tin_adj > 0 else "Decrease"
+                    actions.append(f"Inlet Temp: <b>{d} by {abs(tin_adj):.1f}°C</b> "
+                                  f"({row['Tin current (°C)']}°C → {row['Tin target (°C)']}°C)")
+                if abs(flow_adj) > 0.5:
+                    d = "Increase" if flow_adj > 0 else "Decrease"
+                    actions.append(f"Flowrate: <b>{d} by {abs(flow_adj):.1f}%</b> "
+                                  f"({row['Flow current']:,.0f} → {row['Flow target']:,.0f} Nm³/h)")
+
+                box_class = "action-box"
+                st.markdown(f'<div class="{box_class}">🔧 <b>{name}</b> {row["Feasible"]}<br>'
+                           + '<br>'.join(actions) + '</div>', unsafe_allow_html=True)
+
+        # Visualization
+        fig_opt = make_subplots(rows=1, cols=2,
+                                subplot_titles=('Inlet Temp Adjustments', 'Flowrate Adjustments'))
+        fig_opt.add_trace(go.Bar(
+            x=df_opt['Stream'], y=df_opt['Tin adjust (°C)'],
+            marker_color=['#ef4444' if v < 0 else '#22c55e' for v in df_opt['Tin adjust (°C)']],
+            text=[f"{v:+.1f}°C" for v in df_opt['Tin adjust (°C)']],
+            textposition='outside'
+        ), row=1, col=1)
+        fig_opt.add_trace(go.Bar(
+            x=df_opt['Stream'], y=df_opt['Flow adjust (%)'],
+            marker_color=['#ef4444' if v < 0 else '#22c55e' for v in df_opt['Flow adjust (%)']],
+            text=[f"{v:+.1f}%" for v in df_opt['Flow adjust (%)']],
+            textposition='outside'
+        ), row=1, col=2)
+        fig_opt.update_layout(height=400, showlegend=False, template='plotly_white',
+                             font=dict(family='DM Sans'), margin=dict(t=50, b=40))
+        fig_opt.update_yaxes(title_text="°C", row=1, col=1)
+        fig_opt.update_yaxes(title_text="%", row=1, col=2)
+        st.plotly_chart(fig_opt, use_container_width=True)
 
 
-st.markdown("--- Jardar Singh, 2024 ---")
+# ==============================================================
+# TAB 4: DESIGN REFERENCE
+# ==============================================================
+with tab4:
+    st.markdown('<div class="section-title">Design Specifications (Datasheet N° 4351-1)</div>', unsafe_allow_html=True)
+
+    ref_rows = []
+    for name, spec in DESIGN_SPECS.items():
+        ref_rows.append({
+            'Stream': name,
+            'Fluid': spec['fluid'],
+            'Type': spec['stream_type'].upper(),
+            'Flow (Nm³/h)': f"{spec['total_flowrate_Nm3h']:,}",
+            'T_in (°C)': spec['T_in_C'],
+            'T_out (°C)': spec['T_out_C'],
+            'P (bara)': spec['P_operating_bara'],
+            'ΔP (mbar)': spec['pressure_drop_mbar'],
+            'Q (kcal/h)': f"{spec['heat_duty_kcalh']:,}",
+            'Phase Change': '✅' if spec['phase_change'] else '—'
+        })
+
+    st.dataframe(pd.DataFrame(ref_rows), use_container_width=True, hide_index=True)
+
+    st.markdown(f"""
+    **HX Details:**
+    - Construction Code: ASME with "U" Stamp
+    - Type: Counter-flow plate-fin, 2 cores
+    - Dimensions: 1065 × 1084 × 4240 mm
+    - Total layers/core: 107 (+2 dummy)
+    - Total heat transfer area: 9,672 m²
+    """)
