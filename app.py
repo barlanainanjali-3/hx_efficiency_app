@@ -14,7 +14,7 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("🔥 Plate-Fin Heat Exchanger Efficiency Model")
+st.title(" Plate-Fin Heat Exchanger Efficiency Model")
 st.markdown("### Multi-Stream Counter-Flow — JSPL India (ASU)")
 st.write("Adjust the parameters below to analyze real-time plant performance against design specifications.")
 
