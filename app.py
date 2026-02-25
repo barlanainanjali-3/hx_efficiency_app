@@ -653,29 +653,6 @@ with tab3:
         st.plotly_chart(fig_opt, use_container_width=True)
 
 
-# ==============================================================
-# TAB 4: DESIGN REFERENCE
-# ==============================================================
-with tab4:
-    st.markdown('<div class="section-title">Design Specifications (Datasheet N° 4351-1)</div>', unsafe_allow_html=True)
-
-    ref_rows = []
-    for name, spec in DESIGN_SPECS.items():
-        ref_rows.append({
-            'Stream': name,
-            'Fluid': spec['fluid'],
-            'Type': spec['stream_type'].upper(),
-            'Flow (Nm³/h)': f"{spec['total_flowrate_Nm3h']:,}",
-            'T_in (°C)': spec['T_in_C'],
-            'T_out (°C)': spec['T_out_C'],
-            'P (bara)': spec['P_operating_bara'],
-            'ΔP (mbar)': spec['pressure_drop_mbar'],
-            'Q (kcal/h)': f"{spec['heat_duty_kcalh']:,}",
-            'Phase Change': '✅' if spec['phase_change'] else '—'
-        })
-
-    df_design_ref = pd.DataFrame(ref_rows)
-    st.dataframe(df_design_ref, use_container_width=True, hide_index=True)
 
     # Re-calculate comparison dataframe for export
     comparison = []
@@ -722,13 +699,18 @@ with tab4:
     df_rc_export = run_root_cause(DESIGN_SPECS, plant_data, design_eps, eps_plant)
     df_opt_export, _ = run_optimization(DESIGN_SPECS, plant_data, design_eps)
 
-    excel_data = to_excel(df_design_ref, df_comparison, df_rc_export, df_opt_export)
-    st.download_button(
-        label="📥 Download Full Report (Excel)",
-        data=excel_data,
-        file_name="HX_Efficiency_Report.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+   # Create a custom styled download link
+    b64_excel_data = base64.b64encode(excel_data).decode()
+    html_download_link = f'''
+        <a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64_excel_data}"
+           download="HX_Efficiency_Report.xlsx"
+           style="background-color: #28a745; color: white; padding: 0.75rem 1.25rem;
+                  text-align: center; text-decoration: none; display: inline-block;
+                  font-size: 1rem; border-radius: 0.5rem; font-weight: bold; cursor: pointer;">
+            📥 Download Full Report (Excel)
+        </a>
+    '''
+    st.markdown(html_download_link, unsafe_allow_html=True)
 
     st.markdown(f"""
     **HX Details:**
@@ -737,13 +719,4 @@ with tab4:
     - Dimensions: 1065 × 1084 × 4240 mm
     - Total layers/core: 107 (+2 dummy)
     - Total heat transfer area: 9,672 m³
-    """)
-
-    st.markdown(f"""
-    **HX Details:**
-    - Construction Code: ASME with "U" Stamp
-    - Type: Counter-flow plate-fin, 2 cores
-    - Dimensions: 1065 × 1084 × 4240 mm
-    - Total layers/core: 107 (+2 dummy)
-    - Total heat transfer area: 9,672 m²
     """)
