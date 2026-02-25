@@ -15,7 +15,7 @@ from CoolProp.CoolProp import PropsSI
 # ==============================================================
 # PAGE CONFIG
 # ==============================================================
-st.set_set_page_config(
+st.set_page_config(
     page_title="HX Efficiency Analyzer",
 
     layout="wide",
