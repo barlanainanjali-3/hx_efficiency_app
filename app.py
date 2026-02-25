@@ -652,8 +652,9 @@ with tab3:
         fig_opt.update_yaxes(title_text="%", row=1, col=2)
         st.plotly_chart(fig_opt, use_container_width=True)
 
-
-
+    df_design_ref = pd.DataFrame(ref_rows)
+    st.dataframe(df_design_ref, use_container_width=True, hide_index=True)
+    
     # Re-calculate comparison dataframe for export
     comparison = []
     for name in DESIGN_SPECS.keys():
