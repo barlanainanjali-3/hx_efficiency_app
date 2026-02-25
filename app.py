@@ -15,7 +15,7 @@ from CoolProp.CoolProp import PropsSI
 # ==============================================================
 # PAGE CONFIG
 # ==============================================================
-st.set_page_config(
+st.set_set_page_config(
     page_title="HX Efficiency Analyzer",
 
     layout="wide",
@@ -698,7 +698,8 @@ with tab3:
     # Run root cause and optimization again to get the latest dataframes for export
     df_rc_export = run_root_cause(DESIGN_SPECS, plant_data, design_eps, eps_plant)
     df_opt_export, _ = run_optimization(DESIGN_SPECS, plant_data, design_eps)
-
+    
+    excel_data = to_excel(df_design_ref, df_comparison, df_rc_export, df_opt_export)
    # Create a custom styled download link
     b64_excel_data = base64.b64encode(excel_data).decode()
     html_download_link = f'''
