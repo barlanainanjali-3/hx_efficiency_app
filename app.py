@@ -573,33 +573,147 @@ with tab1:
         })
     df_comparison = pd.DataFrame(comparison)
 
-    def to_excel(df_design, df_comparison_data, df_rc_data, df_opt_data):
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            df_design.to_excel(writer, sheet_name='Design_Specs', index=False)
-            df_comparison_data.to_excel(writer, sheet_name='Plant_vs_Design', index=False)
-            df_rc_data.to_excel(writer, sheet_name='Root_Cause_Analysis', index=False)
-            df_opt_data.to_excel(writer, sheet_name='Optimized_Adjustments', index=False)
-        processed_data = output.getvalue()
-        return processed_data
+   # ============================================================
+# CELL 10: Summary & Export
+# ============================================================
 
-    # Run root cause and optimization again to get the latest dataframes for export
-    df_rc_export = run_root_cause(DESIGN_SPECS, plant_data, design_eps, eps_plant)
-    df_opt_export, _ = run_optimization(DESIGN_SPECS, plant_data, design_eps)
+# !pip install openpyxl -q # Removed as Excel export is no longer needed
 
-    excel_data = to_excel(df_design_ref, df_comparison, df_rc_export, df_opt_export)
-    # Create a custom styled download link
-    b64_excel_data = base64.b64encode(excel_data).decode()
-    html_download_link = f'''
-        <a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64_excel_data}"
-           download="HX_Efficiency_Report.xlsx"
-           style="background-color: #28a745; color: white; padding: 0.75rem 1.25rem;
-                  text-align: center; text-decoration: none; display: inline-block;
-                  font-size: 1rem; border-radius: 0.5rem; font-weight: bold; cursor: pointer;">
-            📥 Download Full Report (Excel)
-        </a>
-    '''
-    st.markdown(html_download_link, unsafe_allow_html=True)
+print("🏁 HEAT EXCHANGER EFFICIENCY MODEL — SUMMARY")
+print("="*60)
+print(f"Spec Sheet:     N° 4351-1")
+print(f"HX Type:        Counter-flow Plate-Fin (Multi-stream)")
+print(f"Streams:        {', '.join(streams)}")
+print(f"")
+print(f"Design Overall ε:     {design_baseline['eps_overall']:.4f}")
+print(f"Plant Overall ε:      {eps_plant:.4f}")
+print(f"Overall Efficiency:   {overall_eff:.2f}% of design")
+print(f"Deviation:            {overall_eff - 100:+.2f}%")
+print()
+print("Per-Stream Summary:")
+print("-"*60)
+for _, row in df_comparison.iterrows():
+    s = row['Stream']
+    dev = row['Duty_dev (%)']
+    status = '✅' if abs(dev) < 5 else '⚠️' if abs(dev) < 10 else '❌'
+    print(f"  {status} {s:6s}: Duty deviation = {dev:+.2f}% | Flow deviation = {row['Flow_dev (%)']:+.2f}%")
+
+print()
+print("📁 Exporting results to PDF...")
+
+from matplotlib.backends.backend_pdf import PdfPages
+import matplotlib.pyplot as plt
+
+# Create a PDF file
+with PdfPages('HX_Efficiency_Report.pdf') as pdf:
+    # Page 1: Summary Text
+    fig_summary = plt.figure(figsize=(10, 8))
+    ax_summary = fig_summary.add_subplot(111)
+    ax_summary.axis('off')
+    ax_summary.text(0.05, 0.95, "HEAT EXCHANGER EFFICIENCY MODEL — SUMMARY", fontsize=16, fontweight='bold', va='top')
+    summary_text = (
+        f"Spec Sheet:     N° 4351-1\n"
+        f"HX Type:        Counter-flow Plate-Fin (Multi-stream)\n"
+        f"Streams:        {', '.join(streams)}\n\n"
+        f"Design Overall ε:     {design_baseline['eps_overall']:.4f}\n"
+        f"Plant Overall ε:      {eps_plant:.4f}\n"
+        f"Overall Efficiency:   {overall_eff:.2f}% of design\n"
+        f"Deviation:            {overall_eff - 100:+.2f}%\n\n"
+        f"Per-Stream Summary:\n"
+        f"------------------------------------------------------------\n"
+    )
+    for _, row in df_comparison.iterrows():
+        s = row['Stream']
+        dev = row['Duty_dev (%)']
+        status = '✅' if abs(dev) < 5 else '⚠️' if abs(dev) < 10 else '❌'
+        summary_text += f"  {status} {s:6s}: Duty deviation = {dev:+.2f}% | Flow deviation = {row['Flow_dev (%)']:+.2f}%\n"
+
+    ax_summary.text(0.05, 0.85, summary_text, fontsize=12, va='top', family='monospace')
+    pdf.savefig(fig_summary)
+    plt.close(fig_summary)
+
+    # Page 2: Detailed Per-Stream Comparison Table
+    fig_table = plt.figure(figsize=(12, 6))
+    ax_table = fig_table.add_subplot(111)
+    ax_table.axis('off')
+    ax_table.set_title("Detailed Per-Stream Comparison (Plant vs. Design)", fontsize=14, fontweight='bold')
+    
+    # Prepare data for table in matplotlib
+    table_data = df_comparison[[
+        'Stream', 'Type',
+        'Flow_plant', 'Flow_design', 'Flow_dev (%)',
+        'Tin_plant', 'Tin_design', 'Tin_dev (°C)',
+        'Tout_plant', 'Tout_design', 'Tout_dev (°C)',
+        'Q_plant (kcal/h)', 'Q_design (kcal/h)', 'Duty_dev (%)'
+    ]].values.tolist()
+    table_cols = df_comparison[[
+        'Stream', 'Type',
+        'Flow_plant', 'Flow_design', 'Flow_dev (%)',
+        'Tin_plant', 'Tin_design', 'Tin_dev (°C)',
+        'Tout_plant', 'Tout_design', 'Tout_dev (°C)',
+        'Q_plant (kcal/h)', 'Q_design (kcal/h)', 'Duty_dev (%)'
+    ]].columns.tolist()
+    
+    table = ax_table.table(cellText=table_data, colLabels=table_cols, loc='center', cellLoc='center')
+    table.auto_set_font_size(False)
+    table.set_fontsize(10)
+    table.scale(1.2, 1.2) # Adjust size for readability
+    pdf.savefig(fig_table, bbox_inches='tight')
+    plt.close(fig_table)
+
+    # Page 3: Plot 1 - Per-stream Heat Duty Comparison
+    fig1_pdf, ax1_pdf = plt.subplots(figsize=(10, 5))
+    q_design_vals_pdf = [design_baseline['per_stream'][s]['Q_design_kcalh'] / 1e6 for s in streams]
+    q_plant_vals_pdf = [df_comparison[df_comparison['Stream'] == s]['Q_plant (kcal/h)'].values[0] / 1e6 if not pd.isna(df_comparison[df_comparison['Stream'] == s]['Q_plant (kcal/h)'].values[0]) else 0 for s in streams]
+    x_pdf = np.arange(len(streams))
+    width_pdf = 0.35
+    ax1_pdf.bar(x_pdf - width_pdf/2, q_design_vals_pdf, width_pdf, label='Design', color='steelblue', alpha=0.8)
+    ax1_pdf.bar(x_pdf + width_pdf/2, q_plant_vals_pdf, width_pdf, label='Plant (Current)', color='coral', alpha=0.8)
+    ax1_pdf.set_xlabel('Stream')
+    ax1_pdf.set_ylabel('Heat Duty (x10^6 kcal/h)')
+    ax1_pdf.set_title('Per-Stream Heat Duty Comparison')
+    ax1_pdf.set_xticks(x_pdf)
+    ax1_pdf.set_xticklabels(streams)
+    ax1_pdf.legend()
+    ax1_pdf.grid(axis='y', alpha=0.3)
+    pdf.savefig(fig1_pdf)
+    plt.close(fig1_pdf)
+
+    # Page 4: Plot 2 - Per-stream Duty Deviation
+    fig2_pdf, ax2_pdf = plt.subplots(figsize=(10, 5))
+    duty_devs_pdf = [df_comparison[df_comparison['Stream'] == s]['Duty_dev (%)'].values[0] if not pd.isna(df_comparison[df_comparison['Stream'] == s]['Duty_dev (%)'].values[0]) else 0 for s in streams]
+    bar_colors_pdf = []
+    for dev in duty_devs_pdf:
+        if abs(dev) < 5: # Within 5%
+            bar_colors_pdf.append('green')
+        elif abs(dev) < 10: # Within 10%
+            bar_colors_pdf.append('orange')
+        else:
+            bar_colors_pdf.append('red')
+
+    ax2_pdf.bar(streams, duty_devs_pdf, color=bar_colors_pdf, alpha=0.8)
+    ax2_pdf.axhline(0, color='grey', linestyle='--', linewidth=0.8)
+    ax2_pdf.axhline(5, color='green', linestyle=':', alpha=0.6, label='±5% acceptable')
+    ax2_pdf.axhline(-5, color='green', linestyle=':', alpha=0.6)
+    ax2_pdf.axhline(10, color='orange', linestyle=':', alpha=0.6, label='±10% warning')
+    ax2_pdf.axhline(-10, color='orange', linestyle=':', alpha=0.6)
+    ax2_pdf.set_xlabel('Stream')
+    ax2_pdf.set_ylabel('Duty Deviation (%)')
+    ax2_pdf.set_title('Heat Duty Deviation (%) from Design for Each Stream')
+    ax2_pdf.legend()
+    ax2_pdf.grid(axis='y', alpha=0.3)
+    pdf.savefig(fig2_pdf)
+    plt.close(fig2_pdf)
+
+print("✅ Exported to 'HX_Efficiency_Report.pdf'")
+print()
+print("🔜 NEXT STEPS:")
+print("   1. Edit Cell 8 with real plant data and re-run")
+print("   2. Add inlet temperature variation simulation")
+print("   3. Add pressure drop impact analysis")
+print("   4. Add fouling factor degradation model")
+print("   5. Add time-series trending (if historical data available)")
+
 
 
 # ==============================================================
