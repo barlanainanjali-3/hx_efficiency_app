@@ -578,7 +578,7 @@ with tab1:
 # ============================================================
 
 # !pip install openpyxl -q # Removed as Excel export is no longer needed
-
+streams = list(design_specs.keys())
 print("🏁 HEAT EXCHANGER EFFICIENCY MODEL — SUMMARY")
 print("="*60)
 print(f"Spec Sheet:     N° 4351-1")
