@@ -578,7 +578,7 @@ with tab1:
 # ============================================================
 
 # !pip install openpyxl -q # Removed as Excel export is no longer needed
-streams = list(DESIGN_SPECS.keys())
+
 print("🏁 HEAT EXCHANGER EFFICIENCY MODEL — SUMMARY")
 print("="*60)
 print(f"Spec Sheet:     N° 4351-1")
@@ -706,13 +706,7 @@ with PdfPages('HX_Efficiency_Report.pdf') as pdf:
     plt.close(fig2_pdf)
 
 print("✅ Exported to 'HX_Efficiency_Report.pdf'")
-print()
-print("🔜 NEXT STEPS:")
-print("   1. Edit Cell 8 with real plant data and re-run")
-print("   2. Add inlet temperature variation simulation")
-print("   3. Add pressure drop impact analysis")
-print("   4. Add fouling factor degradation model")
-print("   5. Add time-series trending (if historical data available)")
+
 
 
 
