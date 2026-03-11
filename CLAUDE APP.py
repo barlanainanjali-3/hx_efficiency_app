@@ -911,7 +911,7 @@ design_baseline = st.session_state.design_baseline
 # ============================================================
 # Streamlit UI — Main Tabs
 # ============================================================
-
+plant_data = copy.deepcopy(design_specs)
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📥  1. Plant Inputs",
     "📊  2. Performance Analysis",
