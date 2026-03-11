@@ -5,4 +5,5 @@ pandas
 plotly
 scipy
 openpyxl
-
+reportlab
+build-essential
