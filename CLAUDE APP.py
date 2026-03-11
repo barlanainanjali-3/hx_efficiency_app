@@ -1145,6 +1145,3 @@ if st.button("📄 Generate & Download PDF Report", type="primary"):
         mime="application/pdf"
     )
     st.success(f"Report ready: **{file_name}**")
-
-
-st.markdown("--- Jardar Singh, 2024 ---")
