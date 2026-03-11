@@ -909,175 +909,202 @@ if 'design_baseline' not in st.session_state:
 design_baseline = st.session_state.design_baseline
 
 # ============================================================
-# Streamlit UI — Inputs
+# Streamlit UI — Main Tabs
 # ============================================================
 
-st.header("1. Enter Current Plant Operating Data")
-st.markdown("Adjust the sliders or type in the values for each stream's flowrate and temperatures.")
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    "📥  1. Plant Inputs",
+    "📊  2. Performance Analysis",
+    "📈  3. Visualizations",
+    "🔍  4. Root Cause",
+    "📄  5. Download Report"
+])
 
-plant_data = copy.deepcopy(design_specs)
+# ============================================================
+# TAB 1 — Plant Inputs
+# ============================================================
+with tab1:
+    st.header("Enter Current Plant Operating Data")
+    st.markdown("Adjust the values for each stream's flowrate and temperatures.")
 
-hot_streams = [s for s, spec in design_specs.items() if spec['stream_type'] == 'hot']
-cold_streams = [s for s, spec in design_specs.items() if spec['stream_type'] == 'cold']
-hot_tab, cold_tab = st.tabs(["Hot Streams", "Cold Streams"])
+    hot_streams = [s for s, spec in design_specs.items() if spec['stream_type'] == 'hot']
+    cold_streams = [s for s, spec in design_specs.items() if spec['stream_type'] == 'cold']
 
-with hot_tab:
-    st.subheader("Hot Streams (Cooling)")
-    for stream_name in hot_streams:
-        spec = design_specs[stream_name]
-        with st.expander(f"**{stream_name}** (Design: {spec['T_in_C']}°C in, {spec['T_out_C']}°C out, {spec['total_flowrate_Nm3h']} Nm³/h)"):
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                plant_data[stream_name]['total_flowrate_Nm3h'] = st.number_input(
-                    f"Flowrate (Nm³/h) for {stream_name}",
-                    min_value=0.0, max_value=float(spec['total_flowrate_Nm3h'] * 1.5),
-                    value=float(plant_data[stream_name]['total_flowrate_Nm3h']),
-                    step=10.0, format="%.1f", key=f"flow_{stream_name}")
-            with col2:
-                plant_data[stream_name]['T_in_C'] = st.number_input(
-                    f"Inlet Temp (°C) for {stream_name}",
-                    min_value=-200.0, max_value=100.0,
-                    value=float(plant_data[stream_name]['T_in_C']),
-                    step=0.1, format="%.1f", key=f"Tin_{stream_name}")
-            with col3:
-                plant_data[stream_name]['T_out_C'] = st.number_input(
-                    f"Outlet Temp (°C) for {stream_name}",
-                    min_value=-200.0, max_value=100.0,
-                    value=float(plant_data[stream_name]['T_out_C']),
-                    step=0.1, format="%.1f", key=f"Tout_{stream_name}")
-            flow_ratio = plant_data[stream_name]['total_flowrate_Nm3h'] / spec['total_flowrate_Nm3h'] if spec['total_flowrate_Nm3h'] != 0 else 0
-            for key_suffix in ['vapor_in_Nm3h', 'vapor_out_Nm3h', 'liquid_in_Nm3h', 'liquid_out_Nm3h']:
-                if key_suffix in spec:
-                    plant_data[stream_name][key_suffix] = spec[key_suffix] * flow_ratio
+    hot_tab, cold_tab = st.tabs(["🔴 Hot Streams", "🔵 Cold Streams"])
 
-with cold_tab:
-    st.subheader("Cold Streams (Heating)")
-    for stream_name in cold_streams:
-        spec = design_specs[stream_name]
-        with st.expander(f"**{stream_name}** (Design: {spec['T_in_C']}°C in, {spec['T_out_C']}°C out, {spec['total_flowrate_Nm3h']} Nm³/h)"):
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                plant_data[stream_name]['total_flowrate_Nm3h'] = st.number_input(
-                    f"Flowrate (Nm³/h) for {stream_name}",
-                    min_value=0.0, max_value=float(spec['total_flowrate_Nm3h'] * 1.5),
-                    value=float(plant_data[stream_name]['total_flowrate_Nm3h']),
-                    step=10.0, format="%.1f", key=f"flow_{stream_name}")
-            with col2:
-                plant_data[stream_name]['T_in_C'] = st.number_input(
-                    f"Inlet Temp (°C) for {stream_name}",
-                    min_value=-200.0, max_value=100.0,
-                    value=float(plant_data[stream_name]['T_in_C']),
-                    step=0.1, format="%.1f", key=f"Tin_{stream_name}")
-            with col3:
-                plant_data[stream_name]['T_out_C'] = st.number_input(
-                    f"Outlet Temp (°C) for {stream_name}",
-                    min_value=-200.0, max_value=100.0,
-                    value=float(plant_data[stream_name]['T_out_C']),
-                    step=0.1, format="%.1f", key=f"Tout_{stream_name}")
-            flow_ratio = plant_data[stream_name]['total_flowrate_Nm3h'] / spec['total_flowrate_Nm3h'] if spec['total_flowrate_Nm3h'] != 0 else 0
-            for key_suffix in ['vapor_in_Nm3h', 'vapor_out_Nm3h', 'liquid_in_Nm3h', 'liquid_out_Nm3h']:
-                if key_suffix in spec:
-                    plant_data[stream_name][key_suffix] = spec[key_suffix] * flow_ratio
+    with hot_tab:
+        st.subheader("Hot Streams (Cooling)")
+        for stream_name in hot_streams:
+            spec = design_specs[stream_name]
+            with st.expander(f"**{stream_name}** (Design: {spec['T_in_C']}°C in, {spec['T_out_C']}°C out, {spec['total_flowrate_Nm3h']} Nm³/h)"):
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    plant_data[stream_name]['total_flowrate_Nm3h'] = st.number_input(
+                        f"Flowrate (Nm³/h) for {stream_name}",
+                        min_value=0.0, max_value=float(spec['total_flowrate_Nm3h'] * 1.5),
+                        value=float(plant_data[stream_name]['total_flowrate_Nm3h']),
+                        step=10.0, format="%.1f", key=f"flow_{stream_name}")
+                with col2:
+                    plant_data[stream_name]['T_in_C'] = st.number_input(
+                        f"Inlet Temp (°C) for {stream_name}",
+                        min_value=-200.0, max_value=100.0,
+                        value=float(plant_data[stream_name]['T_in_C']),
+                        step=0.1, format="%.1f", key=f"Tin_{stream_name}")
+                with col3:
+                    plant_data[stream_name]['T_out_C'] = st.number_input(
+                        f"Outlet Temp (°C) for {stream_name}",
+                        min_value=-200.0, max_value=100.0,
+                        value=float(plant_data[stream_name]['T_out_C']),
+                        step=0.1, format="%.1f", key=f"Tout_{stream_name}")
+                flow_ratio = plant_data[stream_name]['total_flowrate_Nm3h'] / spec['total_flowrate_Nm3h'] if spec['total_flowrate_Nm3h'] != 0 else 0
+                for key_suffix in ['vapor_in_Nm3h', 'vapor_out_Nm3h', 'liquid_in_Nm3h', 'liquid_out_Nm3h']:
+                    if key_suffix in spec:
+                        plant_data[stream_name][key_suffix] = spec[key_suffix] * flow_ratio
+
+    with cold_tab:
+        st.subheader("Cold Streams (Heating)")
+        for stream_name in cold_streams:
+            spec = design_specs[stream_name]
+            with st.expander(f"**{stream_name}** (Design: {spec['T_in_C']}°C in, {spec['T_out_C']}°C out, {spec['total_flowrate_Nm3h']} Nm³/h)"):
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    plant_data[stream_name]['total_flowrate_Nm3h'] = st.number_input(
+                        f"Flowrate (Nm³/h) for {stream_name}",
+                        min_value=0.0, max_value=float(spec['total_flowrate_Nm3h'] * 1.5),
+                        value=float(plant_data[stream_name]['total_flowrate_Nm3h']),
+                        step=10.0, format="%.1f", key=f"flow_{stream_name}")
+                with col2:
+                    plant_data[stream_name]['T_in_C'] = st.number_input(
+                        f"Inlet Temp (°C) for {stream_name}",
+                        min_value=-200.0, max_value=100.0,
+                        value=float(plant_data[stream_name]['T_in_C']),
+                        step=0.1, format="%.1f", key=f"Tin_{stream_name}")
+                with col3:
+                    plant_data[stream_name]['T_out_C'] = st.number_input(
+                        f"Outlet Temp (°C) for {stream_name}",
+                        min_value=-200.0, max_value=100.0,
+                        value=float(plant_data[stream_name]['T_out_C']),
+                        step=0.1, format="%.1f", key=f"Tout_{stream_name}")
+                flow_ratio = plant_data[stream_name]['total_flowrate_Nm3h'] / spec['total_flowrate_Nm3h'] if spec['total_flowrate_Nm3h'] != 0 else 0
+                for key_suffix in ['vapor_in_Nm3h', 'vapor_out_Nm3h', 'liquid_in_Nm3h', 'liquid_out_Nm3h']:
+                    if key_suffix in spec:
+                        plant_data[stream_name][key_suffix] = spec[key_suffix] * flow_ratio
+
+    st.info("✅ After entering values, navigate to the other tabs to view results.")
 
 
 # ============================================================
-# Analysis & Results
+# Run analysis (shared across all tabs)
 # ============================================================
-
-st.header("2. Performance Analysis")
 df_comparison, eps_plant, overall_eff = analyze_plant_vs_design(plant_data, design_specs, design_baseline)
-
-st.subheader("Overall Heat Exchanger Efficiency")
-col_eff1, col_eff2, col_eff3 = st.columns(3)
-with col_eff1:
-    st.metric(label="Design Overall Effectiveness (ε)", value=f"{design_baseline['eps_overall']:.4f}")
-with col_eff2:
-    st.metric(label="Plant Overall Effectiveness (ε)", value=f"{eps_plant:.4f}")
-with col_eff3:
-    st.metric(label="Overall Efficiency (% of Design)", value=f"{overall_eff:.2f}%", delta=f"{overall_eff - 100:+.2f}%")
-
-st.subheader("Detailed Per-Stream Comparison (Plant vs. Design)")
-st.dataframe(df_comparison[[
-    'Stream', 'Type',
-    'Flow_plant', 'Flow_design', 'Flow_dev (%)',
-    'Tin_plant', 'Tin_design', 'Tin_dev (°C)',
-    'Tout_plant', 'Tout_design', 'Tout_dev (°C)',
-    'Q_plant (kcal/h)', 'Q_design (kcal/h)', 'Duty_dev (%)'
-]])
-
-
-# ============================================================
-# Visualizations
-# ============================================================
-
-st.header("3. Visualizations")
-
-streams = list(design_specs.keys())
-
-# Plot 1
-st.subheader("Heat Duty: Plant vs. Design")
-fig1, ax1 = plt.subplots(figsize=(10, 4.5))
-q_design_vals = [design_baseline['per_stream'][s]['Q_design_kcalh'] / 1e6 for s in streams]
-q_plant_vals = [
-    df_comparison[df_comparison['Stream'] == s]['Q_plant (kcal/h)'].values[0] / 1e6
-    if not pd.isna(df_comparison[df_comparison['Stream'] == s]['Q_plant (kcal/h)'].values[0]) else 0
-    for s in streams
-]
-x = np.arange(len(streams))
-width = 0.35
-ax1.bar(x - width/2, q_design_vals, width, label='Design', color='steelblue', alpha=0.85)
-ax1.bar(x + width/2, q_plant_vals, width, label='Plant (Current)', color='coral', alpha=0.85)
-ax1.set_xlabel('Stream')
-ax1.set_ylabel('Heat Duty (×10⁶ kcal/h)')
-ax1.set_title('Per-Stream Heat Duty Comparison')
-ax1.set_xticks(x)
-ax1.set_xticklabels(streams)
-ax1.legend()
-ax1.grid(axis='y', alpha=0.3)
-fig1.tight_layout()
-st.pyplot(fig1)
-
-# Plot 2
-st.subheader("Per-Stream Heat Duty Deviation from Design")
-fig2, ax2 = plt.subplots(figsize=(10, 4.5))
-duty_devs = [
-    df_comparison[df_comparison['Stream'] == s]['Duty_dev (%)'].values[0]
-    if not pd.isna(df_comparison[df_comparison['Stream'] == s]['Duty_dev (%)'].values[0]) else 0
-    for s in streams
-]
-bar_colors = []
-for dev in duty_devs:
-    if abs(dev) < 5:
-        bar_colors.append('#2ca02c')
-    elif abs(dev) < 10:
-        bar_colors.append('#ff7f0e')
-    else:
-        bar_colors.append('#d62728')
-
-ax2.bar(streams, duty_devs, color=bar_colors, alpha=0.85)
-ax2.axhline(0, color='grey', linestyle='--', linewidth=0.8)
-ax2.axhline(5, color='green', linestyle=':', alpha=0.6, label='±5% acceptable')
-ax2.axhline(-5, color='green', linestyle=':', alpha=0.6)
-ax2.axhline(10, color='orange', linestyle=':', alpha=0.6, label='±10% warning')
-ax2.axhline(-10, color='orange', linestyle=':', alpha=0.6)
-ax2.set_xlabel('Stream')
-ax2.set_ylabel('Duty Deviation (%)')
-ax2.set_title('Heat Duty Deviation (%) from Design')
-ax2.legend()
-ax2.grid(axis='y', alpha=0.3)
-fig2.tight_layout()
-st.pyplot(fig2)
-
-
-# ============================================================
-# Auto Root Cause + Manual Notes
-# ============================================================
-
-st.header("4. Root Cause & Suggested Adjustments")
-
 auto_root_causes, auto_suggestions = generate_root_cause_and_suggestions(df_comparison, overall_eff)
 
-with st.expander("📋 Auto-Generated Root Cause Analysis", expanded=True):
+
+# ============================================================
+# TAB 2 — Performance Analysis
+# ============================================================
+with tab2:
+    st.header("Performance Analysis")
+
+    # Overall efficiency color
+    if overall_eff >= 97:
+        eff_color_fn = st.success
+    elif overall_eff >= 90:
+        eff_color_fn = st.warning
+    else:
+        eff_color_fn = st.error
+
+    eff_color_fn(f"Overall Efficiency vs Design: **{overall_eff:.2f}%**  (Δ {overall_eff - 100:+.2f}%)")
+
+    st.subheader("Overall Effectiveness")
+    col_eff1, col_eff2, col_eff3 = st.columns(3)
+    with col_eff1:
+        st.metric(label="Design Overall Effectiveness (ε)", value=f"{design_baseline['eps_overall']:.4f}")
+    with col_eff2:
+        st.metric(label="Plant Overall Effectiveness (ε)", value=f"{eps_plant:.4f}")
+    with col_eff3:
+        st.metric(label="Overall Efficiency (% of Design)", value=f"{overall_eff:.2f}%",
+                  delta=f"{overall_eff - 100:+.2f}%")
+
+    st.divider()
+    st.subheader("Detailed Per-Stream Comparison (Plant vs. Design)")
+    st.dataframe(df_comparison[[
+        'Stream', 'Type',
+        'Flow_plant', 'Flow_design', 'Flow_dev (%)',
+        'Tin_plant', 'Tin_design', 'Tin_dev (°C)',
+        'Tout_plant', 'Tout_design', 'Tout_dev (°C)',
+        'Q_plant (kcal/h)', 'Q_design (kcal/h)', 'Duty_dev (%)'
+    ]], use_container_width=True)
+
+
+# ============================================================
+# TAB 3 — Visualizations
+# ============================================================
+with tab3:
+    st.header("Visualizations")
+    streams = list(design_specs.keys())
+
+    st.subheader("Heat Duty: Plant vs. Design")
+    fig1, ax1 = plt.subplots(figsize=(10, 4.5))
+    q_design_vals = [design_baseline['per_stream'][s]['Q_design_kcalh'] / 1e6 for s in streams]
+    q_plant_vals = [
+        df_comparison[df_comparison['Stream'] == s]['Q_plant (kcal/h)'].values[0] / 1e6
+        if not pd.isna(df_comparison[df_comparison['Stream'] == s]['Q_plant (kcal/h)'].values[0]) else 0
+        for s in streams
+    ]
+    x = np.arange(len(streams))
+    width = 0.35
+    ax1.bar(x - width/2, q_design_vals, width, label='Design', color='steelblue', alpha=0.85)
+    ax1.bar(x + width/2, q_plant_vals, width, label='Plant (Current)', color='coral', alpha=0.85)
+    ax1.set_xlabel('Stream')
+    ax1.set_ylabel('Heat Duty (×10⁶ kcal/h)')
+    ax1.set_title('Per-Stream Heat Duty Comparison')
+    ax1.set_xticks(x)
+    ax1.set_xticklabels(streams)
+    ax1.legend()
+    ax1.grid(axis='y', alpha=0.3)
+    fig1.tight_layout()
+    st.pyplot(fig1)
+
+    st.divider()
+
+    st.subheader("Per-Stream Heat Duty Deviation from Design")
+    fig2, ax2 = plt.subplots(figsize=(10, 4.5))
+    duty_devs = [
+        df_comparison[df_comparison['Stream'] == s]['Duty_dev (%)'].values[0]
+        if not pd.isna(df_comparison[df_comparison['Stream'] == s]['Duty_dev (%)'].values[0]) else 0
+        for s in streams
+    ]
+    bar_colors = []
+    for dev in duty_devs:
+        if abs(dev) < 5:
+            bar_colors.append('#2ca02c')
+        elif abs(dev) < 10:
+            bar_colors.append('#ff7f0e')
+        else:
+            bar_colors.append('#d62728')
+    ax2.bar(streams, duty_devs, color=bar_colors, alpha=0.85)
+    ax2.axhline(0, color='grey', linestyle='--', linewidth=0.8)
+    ax2.axhline(5,  color='green',  linestyle=':', alpha=0.6, label='±5% acceptable')
+    ax2.axhline(-5, color='green',  linestyle=':', alpha=0.6)
+    ax2.axhline(10,  color='orange', linestyle=':', alpha=0.6, label='±10% warning')
+    ax2.axhline(-10, color='orange', linestyle=':', alpha=0.6)
+    ax2.set_xlabel('Stream')
+    ax2.set_ylabel('Duty Deviation (%)')
+    ax2.set_title('Heat Duty Deviation (%) from Design')
+    ax2.legend()
+    ax2.grid(axis='y', alpha=0.3)
+    fig2.tight_layout()
+    st.pyplot(fig2)
+
+
+# ============================================================
+# TAB 4 — Root Cause & Suggested Adjustments
+# ============================================================
+with tab4:
+    st.header("Root Cause & Suggested Adjustments")
+
+    st.subheader("📋 Auto-Generated Root Cause Analysis")
     for line in auto_root_causes:
         if '[CRITICAL]' in line:
             st.error(line)
@@ -1086,62 +1113,105 @@ with st.expander("📋 Auto-Generated Root Cause Analysis", expanded=True):
         elif '[OK]' in line:
             st.success(line)
         else:
-            st.write(line)
+            st.write(f"&nbsp;&nbsp;&nbsp;{line}")
 
-with st.expander("🔧 Auto-Generated Suggested Adjustments", expanded=True):
+    st.divider()
+
+    st.subheader("🔧 Suggested Adjustments")
     for i, sug in enumerate(auto_suggestions, 1):
         st.info(f"**{i}.** {sug}")
 
-st.subheader("✏️ Additional Engineer Notes")
-manual_notes = st.text_area(
-    "Add your own observations, manual root cause, or additional recommendations here:",
-    height=150,
-    placeholder="e.g. Observed frost buildup on AGMP stream outlet. Valve HV-101 was found partially closed during inspection...",
-    key="manual_notes"
-)
+    st.divider()
 
-
-# ============================================================
-# PDF Export
-# ============================================================
-
-st.header("5. Download Report")
-st.markdown("Download a full PDF report including all graphs, metrics, root cause analysis, and your notes.")
-
-if st.button("📄 Generate & Download PDF Report", type="primary"):
-    report_timestamp = datetime.now().strftime("%d %B %Y, %H:%M:%S")
-
-    # Capture fig1 as bytes
-    buf1 = io.BytesIO()
-    fig1.savefig(buf1, format='png', dpi=150, bbox_inches='tight')
-    buf1.seek(0)
-    fig1_bytes = buf1.read()
-
-    # Capture fig2 as bytes
-    buf2 = io.BytesIO()
-    fig2.savefig(buf2, format='png', dpi=150, bbox_inches='tight')
-    buf2.seek(0)
-    fig2_bytes = buf2.read()
-
-    with st.spinner("Building PDF report..."):
-        pdf_bytes = generate_pdf_report(
-            df_comparison=df_comparison,
-            overall_eff=overall_eff,
-            eps_plant=eps_plant,
-            eps_design=design_baseline['eps_overall'],
-            root_causes=auto_root_causes,
-            suggestions=auto_suggestions,
-            manual_notes=manual_notes,
-            fig1_bytes=fig1_bytes,
-            fig2_bytes=fig2_bytes,
-            report_timestamp=report_timestamp
-        )
-
-    file_name = f"HX_Efficiency_Report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-    st.download_button(
-        label="⬇️ Click here to download your PDF",
-        data=pdf_bytes,
-        file_name=file_name,
-        mime="application/pdf"
+    st.subheader("✏️ Additional Engineer Notes")
+    manual_notes = st.text_area(
+        "Add your own observations, manual root cause, or additional recommendations:",
+        height=180,
+        placeholder="e.g. Observed frost buildup on AGMP outlet. Valve HV-101 was found partially closed...",
+        key="manual_notes"
     )
-    st.success(f"Report ready: **{file_name}**")
+
+
+# ============================================================
+# TAB 5 — Download Report
+# ============================================================
+with tab5:
+    st.header("Download PDF Report")
+    st.markdown(
+        "Generates a full report including metric cards, deviation graphs, "
+        "root cause analysis, suggested adjustments, and your engineer notes."
+    )
+
+    # Retrieve manual notes safely (may not have been filled if user skips tab 4)
+    manual_notes_val = st.session_state.get("manual_notes", "")
+
+    if st.button("📄 Generate & Download PDF Report", type="primary"):
+        report_timestamp = datetime.now().strftime("%d %B %Y, %H:%M:%S")
+
+        # Re-render figures for PDF capture
+        _streams = list(design_specs.keys())
+        _fig1, _ax1 = plt.subplots(figsize=(10, 4.5))
+        _q_design = [design_baseline['per_stream'][s]['Q_design_kcalh'] / 1e6 for s in _streams]
+        _q_plant  = [
+            df_comparison[df_comparison['Stream'] == s]['Q_plant (kcal/h)'].values[0] / 1e6
+            if not pd.isna(df_comparison[df_comparison['Stream'] == s]['Q_plant (kcal/h)'].values[0]) else 0
+            for s in _streams
+        ]
+        _x = np.arange(len(_streams))
+        _w = 0.35
+        _ax1.bar(_x - _w/2, _q_design, _w, label='Design',         color='steelblue', alpha=0.85)
+        _ax1.bar(_x + _w/2, _q_plant,  _w, label='Plant (Current)', color='coral',     alpha=0.85)
+        _ax1.set_xticks(_x); _ax1.set_xticklabels(_streams)
+        _ax1.set_xlabel('Stream'); _ax1.set_ylabel('Heat Duty (×10⁶ kcal/h)')
+        _ax1.set_title('Per-Stream Heat Duty Comparison')
+        _ax1.legend(); _ax1.grid(axis='y', alpha=0.3); _fig1.tight_layout()
+
+        _fig2, _ax2 = plt.subplots(figsize=(10, 4.5))
+        _duty_devs  = [
+            df_comparison[df_comparison['Stream'] == s]['Duty_dev (%)'].values[0]
+            if not pd.isna(df_comparison[df_comparison['Stream'] == s]['Duty_dev (%)'].values[0]) else 0
+            for s in _streams
+        ]
+        _bcolors = ['#2ca02c' if abs(d) < 5 else '#ff7f0e' if abs(d) < 10 else '#d62728' for d in _duty_devs]
+        _ax2.bar(_streams, _duty_devs, color=_bcolors, alpha=0.85)
+        _ax2.axhline(0,   color='grey',   linestyle='--', linewidth=0.8)
+        _ax2.axhline(5,   color='green',  linestyle=':', alpha=0.6, label='±5% acceptable')
+        _ax2.axhline(-5,  color='green',  linestyle=':', alpha=0.6)
+        _ax2.axhline(10,  color='orange', linestyle=':', alpha=0.6, label='±10% warning')
+        _ax2.axhline(-10, color='orange', linestyle=':', alpha=0.6)
+        _ax2.set_xlabel('Stream'); _ax2.set_ylabel('Duty Deviation (%)')
+        _ax2.set_title('Heat Duty Deviation (%) from Design')
+        _ax2.legend(); _ax2.grid(axis='y', alpha=0.3); _fig2.tight_layout()
+
+        buf1 = io.BytesIO()
+        _fig1.savefig(buf1, format='png', dpi=150, bbox_inches='tight')
+        buf1.seek(0); fig1_bytes = buf1.read()
+
+        buf2 = io.BytesIO()
+        _fig2.savefig(buf2, format='png', dpi=150, bbox_inches='tight')
+        buf2.seek(0); fig2_bytes = buf2.read()
+
+        plt.close(_fig1); plt.close(_fig2)
+
+        with st.spinner("Building PDF report..."):
+            pdf_bytes = generate_pdf_report(
+                df_comparison=df_comparison,
+                overall_eff=overall_eff,
+                eps_plant=eps_plant,
+                eps_design=design_baseline['eps_overall'],
+                root_causes=auto_root_causes,
+                suggestions=auto_suggestions,
+                manual_notes=manual_notes_val,
+                fig1_bytes=fig1_bytes,
+                fig2_bytes=fig2_bytes,
+                report_timestamp=report_timestamp
+            )
+
+        file_name = f"HX_Efficiency_Report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+        st.download_button(
+            label="⬇️ Click here to download your PDF",
+            data=pdf_bytes,
+            file_name=file_name,
+            mime="application/pdf"
+        )
+        st.success(f"✅ Report ready: **{file_name}**")
