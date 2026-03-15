@@ -1160,15 +1160,15 @@ with tab3:
         Line2D([0], [0], color='#ff7f0e', lw=1.5, linestyle=':', label='±10% Warning'),
     ]
     ax1.legend(handles=legend_elements1, fontsize=8,
-               loc='upper left', framealpha=0.9,
-               bbox_to_anchor=(1.01, 1), borderaxespad=0)
+               loc='upper center', framealpha=0.9,ncol=2,
+               bbox_to_anchor=(0.5,-0.12), borderaxespad=0)
     ax1.set_xlabel('Heat Duty Deviation from Design (%)', fontsize=11, labelpad=8)
     ax1.set_title(
         'Stream Health Scorecard — Heat Duty Deviation (%) Ranked by Severity',
         fontsize=11, fontweight='bold', pad=12
     )
     ax1.grid(axis='x', alpha=0.2, zorder=0)
-    fig1.tight_layout(rect=[0, 0, 0.88, 1])
+    fig1.tight_layout(rect=[0, 0.06, 1, 1])
     st.pyplot(fig1)
 
     st.divider()
