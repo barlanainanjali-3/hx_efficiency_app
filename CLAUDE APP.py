@@ -1228,7 +1228,7 @@ with tab3:
         ax2.set_ylabel('Duty Efficiency (% of Design)', fontsize=10)
         ax2.set_title('Heat Duty Efficiency %\nvs Design Baseline',
                       fontsize=10, fontweight='bold', pad=10)
-       ax2.set_ylim(bottom=y_min, top=max(eff_vals) + 14)
+    ax2.set_ylim(bottom=y_min, top=max(eff_vals) + 14)
     ax2.set_xlabel('Stream', fontsize=10, labelpad=6)
     ax2.set_ylabel('Duty Efficiency (% of Design)', fontsize=10)
     ax2.set_title('Heat Duty Efficiency %\nvs Design Baseline',
