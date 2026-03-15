@@ -1045,269 +1045,361 @@ with tab3:
     streams = list(design_specs.keys())
 
     # ── Shared data prep ────────────────────────────────────────
-    # Per-stream effectiveness (plant)
     delta_T_max = (
         max(plant_data[s]['T_in_C'] for s in streams if design_specs[s]['stream_type'] == 'hot') -
         min(plant_data[s]['T_in_C'] for s in streams if design_specs[s]['stream_type'] == 'cold')
     )
-    eps_plant_per_stream = {}
-    for s in streams:
-        dT = abs(plant_data[s]['T_out_C'] - plant_data[s]['T_in_C'])
-        eps_plant_per_stream[s] = round(dT / delta_T_max, 4) if delta_T_max > 0 else 0
-
-    # Per-stream effectiveness (design)
     delta_T_max_design = (
         max(design_specs[s]['T_in_C'] for s in streams if design_specs[s]['stream_type'] == 'hot') -
         min(design_specs[s]['T_in_C'] for s in streams if design_specs[s]['stream_type'] == 'cold')
     )
-    eps_design_per_stream = {}
+    eps_plant_per_stream, eps_design_per_stream = {}, {}
     for s in streams:
-        dT = abs(design_specs[s]['T_out_C'] - design_specs[s]['T_in_C'])
-        eps_design_per_stream[s] = round(dT / delta_T_max_design, 4) if delta_T_max_design > 0 else 0
+        dT_p = abs(plant_data[s]['T_out_C']  - plant_data[s]['T_in_C'])
+        dT_d = abs(design_specs[s]['T_out_C'] - design_specs[s]['T_in_C'])
+        eps_plant_per_stream[s]  = round(dT_p / delta_T_max,        4) if delta_T_max        > 0 else 0
+        eps_design_per_stream[s] = round(dT_d / delta_T_max_design, 4) if delta_T_max_design > 0 else 0
 
-    # Heat duty efficiency % per stream (Q_plant / Q_design * 100)
-    duty_eff = {}
+    duty_eff, duty_devs = {}, {}
     for s in streams:
         q_p = df_comparison[df_comparison['Stream'] == s]['Q_plant (kcal/h)'].values[0]
         q_d = df_comparison[df_comparison['Stream'] == s]['Q_design (kcal/h)'].values[0]
-        duty_eff[s] = round((q_p / q_d) * 100, 2) if (q_p and q_d) else 0
+        duty_eff[s]  = round((q_p / q_d) * 100, 2) if (q_p and q_d) else 0
+        duty_devs[s] = df_comparison[df_comparison['Stream'] == s]['Duty_dev (%)'].values[0] \
+                       if not pd.isna(df_comparison[df_comparison['Stream'] == s]['Duty_dev (%)'].values[0]) else 0
 
-    # Duty deviation %
-    duty_devs = {
-        s: df_comparison[df_comparison['Stream'] == s]['Duty_dev (%)'].values[0]
-        if not pd.isna(df_comparison[df_comparison['Stream'] == s]['Duty_dev (%)'].values[0]) else 0
-        for s in streams
-    }
-
-    # Sort streams by absolute duty deviation for Graph 1
     sorted_streams = sorted(streams, key=lambda s: abs(duty_devs[s]), reverse=True)
 
     def band_color(val, good=5, warn=10):
-        """Return fill color based on deviation magnitude."""
-        if abs(val) < good:
-            return '#2ca02c'
-        elif abs(val) < warn:
-            return '#ff7f0e'
-        else:
-            return '#d62728'
+        if abs(val) < good:   return '#2ca02c'
+        elif abs(val) < warn: return '#ff7f0e'
+        else:                 return '#d62728'
 
-    # ── GRAPH 1: Stream Health Scorecard (full width) ────────────
-    st.subheader("Stream Health Scorecard — Underperformance Ranking")
-    st.caption("Streams sorted by severity. Red = critical (>±10%), Orange = warning (5–10%), Green = OK (<±5%)")
+    # ════════════════════════════════════════════════════════════
+    # ROW 1: Gauge (Overall ε) + Radar (multi-KPI spider)
+    # ════════════════════════════════════════════════════════════
+    st.subheader("Overall Health & Multi-KPI Comparison")
+    col_g, col_r = st.columns([1, 1.6])
 
-    # ── GRAPH 1: Stream Health Scorecard (full width) ────────────
-    st.subheader("Stream Health Scorecard — Underperformance Ranking")
-    st.caption("Sorted by severity. Red = critical (>±10%), Orange = warning (5–10%), Green = OK (<±5%)")
+    # ── VIZ 1: Gauge — Overall HX Efficiency ────────────────────
+    with col_g:
+        st.caption("Overall HX Efficiency — Gauge")
 
-    fig1, ax1 = plt.subplots(figsize=(13, 6))
+        fig_g, ax_g = plt.subplots(figsize=(5, 3.2),
+                                   subplot_kw=dict(aspect='equal'))
+        ax_g.set_xlim(-1.3, 1.3)
+        ax_g.set_ylim(-0.2, 1.3)
+        ax_g.axis('off')
 
-    y_pos    = np.arange(len(sorted_streams))
-    h_devs   = [duty_devs[s]  for s in sorted_streams]
-    h_effs   = [duty_eff[s]   for s in sorted_streams]
-    h_colors = [band_color(d) for d in h_devs]
+        # Draw coloured arc bands (semicircle)
+        import matplotlib.patches as mpatches
+        from matplotlib.patches import Wedge
 
-    bars = ax1.barh(y_pos, h_devs, color=h_colors, alpha=0.88,
-                    edgecolor='white', linewidth=0.8, height=0.5)
+        cx, cy, r_out, r_in = 0, 0, 1.1, 0.65
 
-    # Fix 1: push label outside bar with a fixed padding, never overlap bar
-    x_max = max(abs(d) for d in h_devs) if h_devs else 10
-    for bar, dev, eff in zip(bars, h_devs, h_effs):
-        pad   = x_max * 0.03
-        xpos  = dev + pad  if dev >= 0 else dev - pad
-        align = 'left'     if dev >= 0 else 'right'
-        ax1.text(xpos, bar.get_y() + bar.get_height() / 2,
-                 f'{dev:+.1f}%   Duty: {eff:.1f}%',
-                 va='center', ha=align, fontsize=8.5,
-                 fontweight='bold', color='#111111')
+        # Band definitions: (start_deg, end_deg, color, label)
+        bands = [
+            (180, 216, '#d62728', '<60%'),
+            (216, 234, '#ff7f0e', '60–70%'),
+            (234, 252, '#ffdd57', '70–80%'),
+            (252, 279, '#a8d5a2', '80–90%'),
+            (279, 297, '#4caf50', '90–95%'),
+            (297, 360, '#1b7c3d', '95–100%'),
+        ]
+        for (t1, t2, col, _) in bands:
+            wedge = Wedge((cx, cy), r_out, t1, t2,
+                          width=r_out - r_in, color=col, alpha=0.9)
+            ax_g.add_patch(wedge)
 
-    ytick_labels = [
-        f"{s}  [{design_specs[s]['stream_type'].upper()}]"
-        for s in sorted_streams
-    ]
-    ax1.set_yticks(y_pos)
-    ax1.set_yticklabels(ytick_labels, fontsize=10)
+        # Tick marks & labels
+        tick_pcts = [0, 20, 40, 60, 80, 100]
+        for pct in tick_pcts:
+            angle_deg = 180 - pct * 1.8
+            angle_rad = np.radians(angle_deg)
+            x1 = cx + r_in  * np.cos(angle_rad)
+            y1 = cy + r_in  * np.sin(angle_rad)
+            x2 = cx + (r_in - 0.07) * np.cos(angle_rad)
+            y2 = cy + (r_in - 0.07) * np.sin(angle_rad)
+            ax_g.plot([x1, x2], [y1, y2], color='white', lw=1.2)
+            xt = cx + (r_in - 0.18) * np.cos(angle_rad)
+            yt = cy + (r_in - 0.18) * np.sin(angle_rad)
+            ax_g.text(xt, yt, f'{pct}%', ha='center', va='center',
+                      fontsize=6.5, color='#333333')
 
-    # Extend x-axis so labels don't get clipped
-    ax1.set_xlim(-x_max * 1.55, x_max * 1.55)
+        # Needle
+        needle_pct  = min(max(overall_eff, 0), 100)
+        needle_deg  = 180 - needle_pct * 1.8
+        needle_rad  = np.radians(needle_deg)
+        needle_len  = r_in - 0.05
+        ax_g.annotate('',
+            xy=(cx + needle_len * np.cos(needle_rad),
+                cy + needle_len * np.sin(needle_rad)),
+            xytext=(cx, cy),
+            arrowprops=dict(arrowstyle='->', color='#1a1a2e',
+                            lw=2.5, mutation_scale=14))
+        # Centre pivot
+        circle = plt.Circle((cx, cy), 0.06, color='#1a1a2e', zorder=5)
+        ax_g.add_patch(circle)
 
-    ax1.axvline(0,   color='#444444', linewidth=1.2, linestyle='--')
-    ax1.axvline(5,   color='#2ca02c', linewidth=1.0, linestyle=':', alpha=0.8)
-    ax1.axvline(-5,  color='#2ca02c', linewidth=1.0, linestyle=':', alpha=0.8)
-    ax1.axvline(10,  color='#ff7f0e', linewidth=1.0, linestyle=':', alpha=0.8)
-    ax1.axvline(-10, color='#ff7f0e', linewidth=1.0, linestyle=':', alpha=0.8)
-    ax1.axvspan(-5,   5,  alpha=0.07, color='green',  zorder=0)
-    ax1.axvspan( 5,  10,  alpha=0.07, color='orange', zorder=0)
-    ax1.axvspan(-10, -5,  alpha=0.07, color='orange', zorder=0)
+        # Central value text
+        eff_col = '#1b7c3d' if overall_eff >= 97 else \
+                  '#856404' if overall_eff >= 90 else '#d62728'
+        ax_g.text(cx, cy - 0.22, f'{overall_eff:.1f}%',
+                  ha='center', va='top', fontsize=18,
+                  fontweight='bold', color=eff_col)
+        ax_g.text(cx, cy - 0.44, 'of Design',
+                  ha='center', va='top', fontsize=8, color='#555555')
 
-    ax1.set_xlabel('Heat Duty Deviation from Design (%)', fontsize=11, labelpad=8)
-    ax1.set_title(
-        'Stream Health Scorecard — Heat Duty Deviation (%) Ranked by Severity',
-        fontsize=11, fontweight='bold', pad=12
-    )
-# move legend outside right of Graph 1
-    from matplotlib.lines import Line2D
-    legend_elements1 = [
-        Line2D([0], [0], color='#2ca02c', lw=1.5, linestyle=':', label='±5%  Acceptable'),
-        Line2D([0], [0], color='#ff7f0e', lw=1.5, linestyle=':', label='±10% Warning'),
-    ]
-    ax1.legend(handles=legend_elements1, fontsize=8,
-               loc='upper center', framealpha=0.9,ncol=2,
-               bbox_to_anchor=(0.5,-0.12), borderaxespad=0)
-    ax1.set_xlabel('Heat Duty Deviation from Design (%)', fontsize=11, labelpad=8)
-    ax1.set_title(
-        'Stream Health Scorecard — Heat Duty Deviation (%) Ranked by Severity',
-        fontsize=11, fontweight='bold', pad=12
-    )
-    ax1.grid(axis='x', alpha=0.2, zorder=0)
-    fig1.tight_layout(rect=[0, 0.06, 1, 1])
-    st.pyplot(fig1)
+        status = 'GOOD' if overall_eff >= 97 else \
+                 'WARNING' if overall_eff >= 90 else 'CRITICAL'
+        ax_g.text(cx, -0.15, status,
+                  ha='center', va='top', fontsize=10,
+                  fontweight='bold', color=eff_col,
+                  bbox=dict(boxstyle='round,pad=0.3',
+                            facecolor='#f5f5f5', edgecolor=eff_col, lw=1.5))
+
+        fig_g.tight_layout()
+        st.pyplot(fig_g)
+
+    # ── VIZ 2: Radar / Spider — Multi-KPI per Stream ─────────────
+    with col_r:
+        st.caption("Multi-KPI Spider — Plant vs Design per Stream")
+
+        # Metrics normalised 0→1: duty_eff/100, eps, flow_ratio
+        # Each stream is one spoke; 3 rings = 3 KPIs
+        kpi_labels = ['Duty Eff.\n(% of Design)', 'Effectiveness\n(ε ratio)',
+                      'Flow Ratio\n(plant/design)']
+        N_kpi = len(kpi_labels)
+        angles = np.linspace(0, 2 * np.pi, len(streams), endpoint=False).tolist()
+        angles += angles[:1]   # close polygon
+
+        plant_duty   = [duty_eff[s] / 100 for s in streams]
+        design_duty  = [1.0] * len(streams)
+        plant_eps    = [eps_plant_per_stream[s]  /
+                        max(eps_design_per_stream[s], 0.001) for s in streams]
+        design_eps   = [1.0] * len(streams)
+        plant_flow   = [plant_data[s]['total_flowrate_Nm3h'] /
+                        design_specs[s]['total_flowrate_Nm3h'] for s in streams]
+        design_flow  = [1.0] * len(streams)
+
+        # One radar per KPI metric, 3 panels side by side
+        fig_r, axes_r = plt.subplots(1, 3, figsize=(9, 3.8),
+                                     subplot_kw=dict(polar=True))
+
+        kpi_data = [
+            (plant_duty,  design_duty,  '#ED7D31', '#4472C4', 'Duty Eff.'),
+            (plant_eps,   design_eps,   '#ED7D31', '#4472C4', 'ε Ratio'),
+            (plant_flow,  design_flow,  '#ED7D31', '#4472C4', 'Flow Ratio'),
+        ]
+
+        for ax_r, (p_vals, d_vals, pc, dc, title) in zip(axes_r, kpi_data):
+            p_plot = p_vals + p_vals[:1]
+            d_plot = d_vals + d_vals[:1]
+
+            ax_r.plot(angles, d_plot, color=dc, lw=1.5,
+                      linestyle='--', label='Design')
+            ax_r.fill(angles, d_plot, color=dc, alpha=0.08)
+            ax_r.plot(angles, p_plot, color=pc, lw=2,
+                      linestyle='-',  label='Plant')
+            ax_r.fill(angles, p_plot, color=pc, alpha=0.18)
+
+            ax_r.set_xticks(angles[:-1])
+            ax_r.set_xticklabels(streams, fontsize=7.5)
+            ax_r.set_yticklabels([])
+            ax_r.set_title(title, fontsize=9, fontweight='bold', pad=12)
+            ax_r.legend(fontsize=6.5, loc='upper right',
+                        bbox_to_anchor=(1.35, 1.1))
+
+            # Annotate plant value at each spoke
+            for ang, val, s in zip(angles[:-1], p_vals, streams):
+                ax_r.text(ang, val + 0.05, f'{val:.2f}',
+                          ha='center', va='bottom', fontsize=6, color=pc)
+
+        fig_r.suptitle('Plant vs Design — KPI Radar per Stream',
+                       fontsize=10, fontweight='bold', y=1.02)
+        fig_r.tight_layout()
+        st.pyplot(fig_r)
 
     st.divider()
 
-    col_left, col_right = st.columns(2)
+    # ════════════════════════════════════════════════════════════
+    # ROW 2: Heatmap — Deviation Matrix
+    # ════════════════════════════════════════════════════════════
+    st.subheader("Deviation Heatmap — All Parameters × All Streams")
+    st.caption("Red = over-design  |  Blue = under-design  |  White = on-target")
 
-    # ── GRAPH 2: Heat Duty Efficiency % ─────────────────────────
-    with col_left:
-        st.subheader("Heat Duty Efficiency % per Stream")
-        st.caption("How much of the design duty each stream is delivering")
+    params = ['Flow Dev (%)', 'Tin Dev (°C)', 'Tout Dev (°C)', 'Duty Dev (%)']
+    param_keys = ['Flow_dev (%)', 'Tin_dev (°C)', 'Tout_dev (°C)', 'Duty_dev (%)']
 
-        fig2, ax2 = plt.subplots(figsize=(7, 6))
+    matrix = []
+    for pk in param_keys:
+        row = []
+        for s in streams:
+            val = df_comparison[df_comparison['Stream'] == s][pk].values[0]
+            row.append(val if val is not None and not pd.isna(val) else 0)
+        matrix.append(row)
+    matrix = np.array(matrix, dtype=float)
 
-        eff_vals   = [duty_eff[s] for s in streams]
-        bar_colors = [band_color(v - 100, good=5, warn=10) for v in eff_vals]
+    fig_h, ax_h = plt.subplots(figsize=(11, 4))
 
-        bars2 = ax2.bar(streams, eff_vals, color=bar_colors, alpha=0.85,
-                        edgecolor='white', linewidth=0.8, zorder=2, width=0.5)
+    import matplotlib.colors as mcolors
+    cmap = plt.cm.RdBu_r
+    # Symmetric scale around 0
+    abs_max = max(abs(matrix).max(), 1)
+    norm = mcolors.TwoSlopeNorm(vmin=-abs_max, vcenter=0, vmax=abs_max)
+    im = ax_h.imshow(matrix, cmap=cmap, norm=norm, aspect='auto')
 
-        ax2.axhline(100, color='#1a1a2e', linewidth=2.0, linestyle='--',
-                    label='Design (100%)', zorder=3)
-        ax2.axhline(95,  color='#ff7f0e', linewidth=1.0, linestyle=':',
-                    alpha=0.7, label='95% warning', zorder=3)
-        ax2.axhline(90,  color='#d62728', linewidth=1.0, linestyle=':',
-                    alpha=0.7, label='90% critical', zorder=3)
-        ax2.axhspan(95, 110, alpha=0.07, color='green',  zorder=0)
-        ax2.axhspan(90,  95, alpha=0.07, color='orange', zorder=0)
-        ax2.axhspan(75,  90, alpha=0.07, color='red',    zorder=0)
+    # Cell text annotations
+    for i in range(len(params)):
+        for j in range(len(streams)):
+            val = matrix[i, j]
+            txt_col = 'white' if abs(val) > abs_max * 0.55 else '#111111'
+            ax_h.text(j, i, f'{val:+.2f}',
+                      ha='center', va='center',
+                      fontsize=9.5, fontweight='bold', color=txt_col)
 
-        # Fix 2: efficiency % on top, Q value below that — no inside-bar text
-        y_min = max(0, min(eff_vals) - 18)
-        for bar, val, s in zip(bars2, eff_vals, streams):
-            # Efficiency % — just above bar top
-            ax2.text(bar.get_x() + bar.get_width() / 2,
-                     bar.get_height() + 0.6,
-                     f'{val:.1f}%',
-                     ha='center', va='bottom',
-                     fontsize=9, fontweight='bold', color='#111111')
-            # Q plant value — below bar near baseline, never overlapping %
-            q_p = df_comparison[df_comparison['Stream'] == s]['Q_plant (kcal/h)'].values[0]
-            ax2.text(bar.get_x() + bar.get_width() / 2,
-                     y_min + 1.0,
-                     f'{q_p/1e6:.2f}M',
-                     ha='center', va='bottom',
-                     fontsize=7, color='#333333')
+    ax_h.set_xticks(range(len(streams)))
+    ax_h.set_xticklabels(
+        [f"{s}\n({design_specs[s]['stream_type'].upper()})"
+         for s in streams], fontsize=9)
+    ax_h.set_yticks(range(len(params)))
+    ax_h.set_yticklabels(params, fontsize=9.5)
+    ax_h.set_title('Parameter Deviation Matrix — Plant vs Design',
+                   fontsize=11, fontweight='bold', pad=12)
 
-        # Fix 3: stream type as rotated x-tick labels — no extra text() calls
-        ax2.set_xticks(range(len(streams)))
-        ax2.set_xticklabels(
-            [f"{s}\n({design_specs[s]['stream_type'].upper()})"
-             for s in streams],
-            fontsize=8.5
-        )
+    cbar = fig_h.colorbar(im, ax=ax_h, orientation='vertical',
+                          fraction=0.03, pad=0.03)
+    cbar.set_label('Deviation (units as labelled)', fontsize=8)
 
-        ax2.set_ylim(bottom=y_min, top=max(eff_vals) + 14)
-        ax2.set_xlabel('Stream', fontsize=10, labelpad=6)
-        ax2.set_ylabel('Duty Efficiency (% of Design)', fontsize=10)
-        ax2.set_title('Heat Duty Efficiency %\nvs Design Baseline',
-                      fontsize=10, fontweight='bold', pad=10)
-    ax2.set_ylim(bottom=y_min, top=max(eff_vals) + 14)
-    ax2.set_xlabel('Stream', fontsize=10, labelpad=6)
-    ax2.set_ylabel('Duty Efficiency (% of Design)', fontsize=10)
-    ax2.set_title('Heat Duty Efficiency %\nvs Design Baseline',
-                  fontsize=10, fontweight='bold', pad=10)
-    # legend below the chart — never overlaps bars
-    ax2.legend(fontsize=7.5, loc='upper center',
-               bbox_to_anchor=(0.5, -0.18),
-               ncol=3, framealpha=0.9, borderaxespad=0)
-    ax2.grid(axis='y', alpha=0.2, zorder=0)
-    fig2.tight_layout(rect=[0, 0.08, 1, 1])
-    st.pyplot(fig2)
-    # ── GRAPH 3: Per-Stream Effectiveness (ε) ───────────────────
-    with col_right:
-        st.subheader("Per-Stream Effectiveness (ε)")
-        st.caption("Temperature-based effectiveness: plant vs design per stream")
+    # Stream type separator line
+    hot_count = sum(1 for s in streams if design_specs[s]['stream_type'] == 'hot')
+    ax_h.axvline(hot_count - 0.5, color='#333333', lw=2, linestyle='--')
+    ax_h.text(hot_count - 0.5, -0.7, '← HOT | COLD →',
+              ha='center', va='top', fontsize=8, color='#333333')
 
-        fig3, ax3 = plt.subplots(figsize=(7, 6))
+    fig_h.tight_layout()
+    st.pyplot(fig_h)
 
-        x3    = np.arange(len(streams))
-        w3    = 0.35
-        eps_d = [eps_design_per_stream[s] for s in streams]
-        eps_p = [eps_plant_per_stream[s]  for s in streams]
+    st.divider()
 
-        bars_d3 = ax3.bar(x3 - w3/2, eps_d, w3, label='Design ε',
-                          color='#4472C4', alpha=0.85, zorder=2)
-        bars_p3 = ax3.bar(x3 + w3/2, eps_p, w3, label='Plant ε',
-                          color='#ED7D31', alpha=0.85, zorder=2)
+    # ════════════════════════════════════════════════════════════
+    # ROW 3: Bubble chart + Ranked health bar
+    # ════════════════════════════════════════════════════════════
+    col_b, col_h = st.columns(2)
 
-        # Fix 4: stagger design/plant ε labels vertically to avoid collision
-        for bar, val in zip(bars_d3, eps_d):
-            ax3.text(bar.get_x() + bar.get_width() / 2,
-                     bar.get_height() + 0.004,
-                     f'{val:.3f}',
-                     ha='center', va='bottom',
-                     fontsize=7.5, color='#1a3a5c', fontweight='bold')
+    # ── VIZ 4: Bubble Chart — Flow vs ε, sized by heat duty ──────
+    with col_b:
+        st.subheader("Bubble Chart")
+        st.caption("X = Flowrate  |  Y = Effectiveness (ε)  |  Size = Heat Duty  |  Color = Duty Deviation")
 
-        for bar, val in zip(bars_p3, eps_p):
-            ax3.text(bar.get_x() + bar.get_width() / 2,
-                     bar.get_height() + 0.004,
-                     f'{val:.3f}',
-                     ha='center', va='bottom',
-                     fontsize=7.5, color='#7b3300', fontweight='bold')
+        fig_b, ax_b = plt.subplots(figsize=(7, 5.5))
 
-        # Δε label placed above the taller of the two bars with extra clearance
-        top_eps = max(max(eps_d), max(eps_p))
-        for i, s in enumerate(streams):
-            delta_e = eps_p[i] - eps_d[i]
-            color   = '#155724' if abs(delta_e) < 0.02 else \
-                      '#856404' if abs(delta_e) < 0.05 else '#721c24'
-            bar_top = max(eps_d[i], eps_p[i])
-            ax3.annotate(
-                f'Δε\n{delta_e:+.3f}',
-                xy=(i, bar_top + 0.008),
-                xytext=(i, bar_top + 0.045),
-                ha='center', va='bottom', fontsize=7, color=color,
-                fontweight='bold',
-                arrowprops=dict(arrowstyle='->', color=color, lw=0.7)
-            )
+        for s in streams:
+            flow = plant_data[s]['total_flowrate_Nm3h']
+            eps  = eps_plant_per_stream[s]
+            q_p  = df_comparison[df_comparison['Stream'] == s]['Q_plant (kcal/h)'].values[0]
+            dev  = duty_devs[s]
+            size = max((q_p / 1e5) ** 1.1, 80) if q_p else 80
+            col  = band_color(dev)
+            stype_marker = 'o' if design_specs[s]['stream_type'] == 'hot' else 's'
 
-        ax3.axhline(design_baseline['eps_overall'], color='#4472C4',
-                    linewidth=1.5, linestyle='--', alpha=0.6,
-                    label=f"Design avg ε={design_baseline['eps_overall']:.3f}")
-        ax3.axhline(eps_plant, color='#ED7D31',
-                    linewidth=1.5, linestyle='--', alpha=0.6,
-                    label=f"Plant avg ε ={eps_plant:.3f}")
+            ax_b.scatter(flow, eps, s=size, c=col, marker=stype_marker,
+                         alpha=0.82, edgecolors='white', linewidths=1.5, zorder=3)
 
-        ax3.set_xticks(x3)
-        ax3.set_xticklabels(
-            [f"{s}\n({design_specs[s]['stream_type'].upper()})"
-             for s in streams],
-            fontsize=8.5
-        )
-        ax3.set_xlabel('Stream', fontsize=10, labelpad=6)
-        ax3.set_ylabel('Effectiveness (ε)', fontsize=10)
-        ax3.set_title('Per-Stream Effectiveness (ε)\nPlant vs Design',
-                      fontsize=10, fontweight='bold', pad=10)
-        ax3.set_xlabel('Stream', fontsize=10, labelpad=6)
-    ax3.set_ylabel('Effectiveness (ε)', fontsize=10)
-    ax3.set_title('Per-Stream Effectiveness (ε)\nPlant vs Design',
-                  fontsize=10, fontweight='bold', pad=10)
-    # legend below the chart — never overlaps Δε annotations above bars
-    ax3.legend(fontsize=7.5, loc='upper center',
-               bbox_to_anchor=(0.5, -0.18),
-               ncol=2, framealpha=0.9, borderaxespad=0)
-    ax3.set_ylim(bottom=0, top=top_eps + 0.18)
-    ax3.grid(axis='y', alpha=0.2, zorder=0)
-    fig3.tight_layout(rect=[0, 0.08, 1, 1])
-    st.pyplot(fig3)
+            # Design position as faint cross
+            d_flow = design_specs[s]['total_flowrate_Nm3h']
+            d_eps  = eps_design_per_stream[s]
+            ax_b.scatter(d_flow, d_eps, s=size * 0.5, c=col,
+                         marker='+', alpha=0.45, linewidths=1.5, zorder=2)
+            ax_b.plot([d_flow, flow], [d_eps, eps],
+                      color=col, lw=0.8, linestyle=':', alpha=0.5, zorder=1)
+
+            # Label with offset to avoid overlap
+            ax_b.annotate(s, xy=(flow, eps), fontsize=8,
+                          fontweight='bold', color='#111111',
+                          xytext=(8, 6), textcoords='offset points')
+
+        # Legend for markers
+        from matplotlib.lines import Line2D
+        legend_elements = [
+            Line2D([0], [0], marker='o', color='w', markerfacecolor='#888',
+                   markersize=9,  label='Hot stream (●)'),
+            Line2D([0], [0], marker='s', color='w', markerfacecolor='#888',
+                   markersize=9,  label='Cold stream (■)'),
+            Line2D([0], [0], marker='+', color='#888',
+                   markersize=9,  label='Design position (+)'),
+            Line2D([0], [0], color='#2ca02c', lw=2, label='< ±5% OK'),
+            Line2D([0], [0], color='#ff7f0e', lw=2, label='±5–10% Warning'),
+            Line2D([0], [0], color='#d62728', lw=2, label='> ±10% Critical'),
+        ]
+        ax_b.legend(handles=legend_elements, fontsize=7,
+                    loc='upper center', bbox_to_anchor=(0.5, -0.14),
+                    ncol=3, framealpha=0.9)
+
+        ax_b.set_xlabel('Plant Flowrate (Nm³/h)', fontsize=10, labelpad=6)
+        ax_b.set_ylabel('Plant Effectiveness (ε)', fontsize=10)
+        ax_b.set_title('Flowrate vs Effectiveness\n(bubble size ∝ heat duty)',
+                       fontsize=10, fontweight='bold', pad=10)
+        ax_b.grid(alpha=0.2, zorder=0)
+        fig_b.tight_layout(rect=[0, 0.1, 1, 1])
+        st.pyplot(fig_b)
+
+    # ── VIZ 5: Ranked horizontal bar — Stream Health Scorecard ───
+    with col_h:
+        st.subheader("Stream Health Scorecard")
+        st.caption("Streams ranked worst → best by duty deviation")
+
+        fig_s, ax_s = plt.subplots(figsize=(7, 5.5))
+
+        y_pos    = np.arange(len(sorted_streams))
+        h_devs   = [duty_devs[s] for s in sorted_streams]
+        h_effs   = [duty_eff[s]  for s in sorted_streams]
+        h_colors = [band_color(d) for d in h_devs]
+
+        bars_s = ax_s.barh(y_pos, h_devs, color=h_colors,
+                           alpha=0.88, edgecolor='white',
+                           linewidth=0.8, height=0.5)
+
+        x_max = max(abs(d) for d in h_devs) if h_devs else 10
+        for bar, dev, eff in zip(bars_s, h_devs, h_effs):
+            pad   = x_max * 0.04
+            xpos  = dev + pad  if dev >= 0 else dev - pad
+            align = 'left'     if dev >= 0 else 'right'
+            ax_s.text(xpos, bar.get_y() + bar.get_height() / 2,
+                      f'{dev:+.1f}%  |  {eff:.1f}% duty',
+                      va='center', ha=align,
+                      fontsize=8, fontweight='bold', color='#111111')
+
+        ax_s.set_yticks(y_pos)
+        ax_s.set_yticklabels(
+            [f"{s}  [{design_specs[s]['stream_type'].upper()}]"
+             for s in sorted_streams], fontsize=9.5)
+        ax_s.set_xlim(-x_max * 1.65, x_max * 1.65)
+
+        ax_s.axvline(0,   color='#444', lw=1.2, linestyle='--')
+        ax_s.axvline(5,   color='#2ca02c', lw=1.0, linestyle=':', alpha=0.8)
+        ax_s.axvline(-5,  color='#2ca02c', lw=1.0, linestyle=':', alpha=0.8)
+        ax_s.axvline(10,  color='#ff7f0e', lw=1.0, linestyle=':', alpha=0.8)
+        ax_s.axvline(-10, color='#ff7f0e', lw=1.0, linestyle=':', alpha=0.8)
+        ax_s.axvspan(-5,   5,  alpha=0.07, color='green',  zorder=0)
+        ax_s.axvspan( 5,  10,  alpha=0.07, color='orange', zorder=0)
+        ax_s.axvspan(-10, -5,  alpha=0.07, color='orange', zorder=0)
+
+        from matplotlib.lines import Line2D
+        leg_s = [
+            Line2D([0],[0], color='#2ca02c', lw=1.5, linestyle=':', label='±5%  OK'),
+            Line2D([0],[0], color='#ff7f0e', lw=1.5, linestyle=':', label='±10% Warning'),
+        ]
+        ax_s.legend(handles=leg_s, fontsize=8,
+                    loc='upper center', bbox_to_anchor=(0.5, -0.1),
+                    ncol=2, framealpha=0.9)
+
+        ax_s.set_xlabel('Heat Duty Deviation (%)', fontsize=10, labelpad=8)
+        ax_s.set_title('Stream Health Scorecard\nRanked by Severity',
+                       fontsize=10, fontweight='bold', pad=10)
+        ax_s.grid(axis='x', alpha=0.2, zorder=0)
+        fig_s.tight_layout(rect=[0, 0.08, 1, 1])
+        st.pyplot(fig_s)
 # ============================================================
 # TAB 4 — Root Cause & Suggested Adjustments
 # ============================================================
