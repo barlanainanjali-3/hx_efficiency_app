@@ -1153,8 +1153,22 @@ with tab3:
         'Stream Health Scorecard — Heat Duty Deviation (%) Ranked by Severity',
         fontsize=11, fontweight='bold', pad=12
     )
+# move legend outside right of Graph 1
+    from matplotlib.lines import Line2D
+    legend_elements1 = [
+        Line2D([0], [0], color='#2ca02c', lw=1.5, linestyle=':', label='±5%  Acceptable'),
+        Line2D([0], [0], color='#ff7f0e', lw=1.5, linestyle=':', label='±10% Warning'),
+    ]
+    ax1.legend(handles=legend_elements1, fontsize=8,
+               loc='upper left', framealpha=0.9,
+               bbox_to_anchor=(1.01, 1), borderaxespad=0)
+    ax1.set_xlabel('Heat Duty Deviation from Design (%)', fontsize=11, labelpad=8)
+    ax1.set_title(
+        'Stream Health Scorecard — Heat Duty Deviation (%) Ranked by Severity',
+        fontsize=11, fontweight='bold', pad=12
+    )
     ax1.grid(axis='x', alpha=0.2, zorder=0)
-    fig1.tight_layout()
+    fig1.tight_layout(rect=[0, 0, 0.88, 1])
     st.pyplot(fig1)
 
     st.divider()
@@ -1214,11 +1228,18 @@ with tab3:
         ax2.set_ylabel('Duty Efficiency (% of Design)', fontsize=10)
         ax2.set_title('Heat Duty Efficiency %\nvs Design Baseline',
                       fontsize=10, fontweight='bold', pad=10)
-        ax2.legend(fontsize=7.5, loc='lower right', framealpha=0.9)
-        ax2.grid(axis='y', alpha=0.2, zorder=0)
-        fig2.tight_layout()
-        st.pyplot(fig2)
-
+       ax2.set_ylim(bottom=y_min, top=max(eff_vals) + 14)
+    ax2.set_xlabel('Stream', fontsize=10, labelpad=6)
+    ax2.set_ylabel('Duty Efficiency (% of Design)', fontsize=10)
+    ax2.set_title('Heat Duty Efficiency %\nvs Design Baseline',
+                  fontsize=10, fontweight='bold', pad=10)
+    # legend below the chart — never overlaps bars
+    ax2.legend(fontsize=7.5, loc='upper center',
+               bbox_to_anchor=(0.5, -0.18),
+               ncol=3, framealpha=0.9, borderaxespad=0)
+    ax2.grid(axis='y', alpha=0.2, zorder=0)
+    fig2.tight_layout(rect=[0, 0.08, 1, 1])
+    st.pyplot(fig2)
     # ── GRAPH 3: Per-Stream Effectiveness (ε) ───────────────────
     with col_right:
         st.subheader("Per-Stream Effectiveness (ε)")
@@ -1284,11 +1305,18 @@ with tab3:
         ax3.set_ylabel('Effectiveness (ε)', fontsize=10)
         ax3.set_title('Per-Stream Effectiveness (ε)\nPlant vs Design',
                       fontsize=10, fontweight='bold', pad=10)
-        ax3.legend(fontsize=7.5, loc='upper right', framealpha=0.9)
-        ax3.set_ylim(bottom=0, top=top_eps + 0.18)
-        ax3.grid(axis='y', alpha=0.2, zorder=0)
-        fig3.tight_layout()
-        st.pyplot(fig3)
+        ax3.set_xlabel('Stream', fontsize=10, labelpad=6)
+    ax3.set_ylabel('Effectiveness (ε)', fontsize=10)
+    ax3.set_title('Per-Stream Effectiveness (ε)\nPlant vs Design',
+                  fontsize=10, fontweight='bold', pad=10)
+    # legend below the chart — never overlaps Δε annotations above bars
+    ax3.legend(fontsize=7.5, loc='upper center',
+               bbox_to_anchor=(0.5, -0.18),
+               ncol=2, framealpha=0.9, borderaxespad=0)
+    ax3.set_ylim(bottom=0, top=top_eps + 0.18)
+    ax3.grid(axis='y', alpha=0.2, zorder=0)
+    fig3.tight_layout(rect=[0, 0.08, 1, 1])
+    st.pyplot(fig3)
 # ============================================================
 # TAB 4 — Root Cause & Suggested Adjustments
 # ============================================================
