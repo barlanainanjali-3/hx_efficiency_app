@@ -1139,15 +1139,6 @@ with tab3:
     ax1.axvspan( 5,  10,  alpha=0.07, color='orange', zorder=0)
     ax1.axvspan(-10, -5,  alpha=0.07, color='orange', zorder=0)
 
-    oc = '#1b7c3d' if overall_eff >= 97 else '#856404' if overall_eff >= 90 else '#721c24'
-    ax1.annotate(
-        f'Overall HX Efficiency\n{overall_eff:.1f}% of Design',
-        xy=(0.99, 0.04), xycoords='axes fraction',
-        ha='right', va='bottom', fontsize=10, fontweight='bold', color=oc,
-        bbox=dict(boxstyle='round,pad=0.5', facecolor='#f5f5f5',
-                  edgecolor=oc, linewidth=2)
-    )
-
     ax1.set_xlabel('Heat Duty Deviation from Design (%)', fontsize=11, labelpad=8)
     ax1.set_title(
         'Stream Health Scorecard — Heat Duty Deviation (%) Ranked by Severity',
