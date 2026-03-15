@@ -1095,31 +1095,41 @@ with tab3:
     st.subheader("Stream Health Scorecard — Underperformance Ranking")
     st.caption("Streams sorted by severity. Red = critical (>±10%), Orange = warning (5–10%), Green = OK (<±5%)")
 
-    fig1, ax1 = plt.subplots(figsize=(11, 5))
+    # ── GRAPH 1: Stream Health Scorecard (full width) ────────────
+    st.subheader("Stream Health Scorecard — Underperformance Ranking")
+    st.caption("Sorted by severity. Red = critical (>±10%), Orange = warning (5–10%), Green = OK (<±5%)")
 
-    y_pos   = np.arange(len(sorted_streams))
-    h_devs  = [duty_devs[s] for s in sorted_streams]
-    h_effs  = [duty_eff[s]  for s in sorted_streams]
+    fig1, ax1 = plt.subplots(figsize=(13, 6))
+
+    y_pos    = np.arange(len(sorted_streams))
+    h_devs   = [duty_devs[s]  for s in sorted_streams]
+    h_effs   = [duty_eff[s]   for s in sorted_streams]
     h_colors = [band_color(d) for d in h_devs]
-    h_types  = [design_specs[s]['stream_type'].upper() for s in sorted_streams]
 
     bars = ax1.barh(y_pos, h_devs, color=h_colors, alpha=0.88,
-                    edgecolor='white', linewidth=0.8, height=0.55)
+                    edgecolor='white', linewidth=0.8, height=0.5)
 
-    # Value labels inside/outside bars
-    for bar, dev, eff, s, stype in zip(bars, h_devs, h_effs, sorted_streams, h_types):
-        xoff  = 0.4 if dev >= 0 else -0.4
-        align = 'left' if dev >= 0 else 'right'
-        ax1.text(dev + xoff, bar.get_y() + bar.get_height()/2,
-                 f'{dev:+.2f}%  |  Duty Eff: {eff:.1f}%',
-                 va='center', ha=align, fontsize=9, fontweight='bold', color='#111111')
+    # Fix 1: push label outside bar with a fixed padding, never overlap bar
+    x_max = max(abs(d) for d in h_devs) if h_devs else 10
+    for bar, dev, eff in zip(bars, h_devs, h_effs):
+        pad   = x_max * 0.03
+        xpos  = dev + pad  if dev >= 0 else dev - pad
+        align = 'left'     if dev >= 0 else 'right'
+        ax1.text(xpos, bar.get_y() + bar.get_height() / 2,
+                 f'{dev:+.1f}%   Duty: {eff:.1f}%',
+                 va='center', ha=align, fontsize=8.5,
+                 fontweight='bold', color='#111111')
 
-    # Stream type badge on y-axis labels
-    ytick_labels = [f"{s}  [{design_specs[s]['stream_type'].upper()}]" for s in sorted_streams]
+    ytick_labels = [
+        f"{s}  [{design_specs[s]['stream_type'].upper()}]"
+        for s in sorted_streams
+    ]
     ax1.set_yticks(y_pos)
     ax1.set_yticklabels(ytick_labels, fontsize=10)
 
-    # Reference lines & shaded bands
+    # Extend x-axis so labels don't get clipped
+    ax1.set_xlim(-x_max * 1.55, x_max * 1.55)
+
     ax1.axvline(0,   color='#444444', linewidth=1.2, linestyle='--')
     ax1.axvline(5,   color='#2ca02c', linewidth=1.0, linestyle=':', alpha=0.8)
     ax1.axvline(-5,  color='#2ca02c', linewidth=1.0, linestyle=':', alpha=0.8)
@@ -1129,7 +1139,6 @@ with tab3:
     ax1.axvspan( 5,  10,  alpha=0.07, color='orange', zorder=0)
     ax1.axvspan(-10, -5,  alpha=0.07, color='orange', zorder=0)
 
-    # Overall efficiency badge
     oc = '#1b7c3d' if overall_eff >= 97 else '#856404' if overall_eff >= 90 else '#721c24'
     ax1.annotate(
         f'Overall HX Efficiency\n{overall_eff:.1f}% of Design',
@@ -1140,80 +1149,82 @@ with tab3:
     )
 
     ax1.set_xlabel('Heat Duty Deviation from Design (%)', fontsize=11, labelpad=8)
-    ax1.set_title('Stream Health Scorecard — Heat Duty Deviation (%) Ranked by Severity\n'
-                  'Most underperforming stream at top',
-                  fontsize=11, fontweight='bold', pad=12)
+    ax1.set_title(
+        'Stream Health Scorecard — Heat Duty Deviation (%) Ranked by Severity',
+        fontsize=11, fontweight='bold', pad=12
+    )
     ax1.grid(axis='x', alpha=0.2, zorder=0)
     fig1.tight_layout()
     st.pyplot(fig1)
 
     st.divider()
 
-    # ── GRAPHS 2 & 3: side by side ───────────────────────────────
     col_left, col_right = st.columns(2)
 
-    # ── GRAPH 2: Heat Duty Efficiency % per Stream ───────────────
+    # ── GRAPH 2: Heat Duty Efficiency % ─────────────────────────
     with col_left:
         st.subheader("Heat Duty Efficiency % per Stream")
         st.caption("How much of the design duty each stream is delivering")
 
-        fig2, ax2 = plt.subplots(figsize=(7, 5))
+        fig2, ax2 = plt.subplots(figsize=(7, 6))
 
-        eff_vals   = [duty_eff[s]  for s in streams]
+        eff_vals   = [duty_eff[s] for s in streams]
         bar_colors = [band_color(v - 100, good=5, warn=10) for v in eff_vals]
 
         bars2 = ax2.bar(streams, eff_vals, color=bar_colors, alpha=0.85,
-                        edgecolor='white', linewidth=0.8, zorder=2, width=0.55)
+                        edgecolor='white', linewidth=0.8, zorder=2, width=0.5)
 
-        # 100% design line
-        ax2.axhline(100, color='#1a1a2e', linewidth=2.0,
-                    linestyle='--', label='Design Baseline (100%)', zorder=3)
-        ax2.axhline(95,  color='#ff7f0e', linewidth=1.0,
-                    linestyle=':', alpha=0.7, label='95% lower warning',  zorder=3)
-        ax2.axhline(90,  color='#d62728', linewidth=1.0,
-                    linestyle=':', alpha=0.7, label='90% critical threshold', zorder=3)
-
-        # Shaded bands
-        ax2.axhspan(95, 105, alpha=0.07, color='green',  zorder=0)
+        ax2.axhline(100, color='#1a1a2e', linewidth=2.0, linestyle='--',
+                    label='Design (100%)', zorder=3)
+        ax2.axhline(95,  color='#ff7f0e', linewidth=1.0, linestyle=':',
+                    alpha=0.7, label='95% warning', zorder=3)
+        ax2.axhline(90,  color='#d62728', linewidth=1.0, linestyle=':',
+                    alpha=0.7, label='90% critical', zorder=3)
+        ax2.axhspan(95, 110, alpha=0.07, color='green',  zorder=0)
         ax2.axhspan(90,  95, alpha=0.07, color='orange', zorder=0)
-        ax2.axhspan(80,  90, alpha=0.07, color='red',    zorder=0)
+        ax2.axhspan(75,  90, alpha=0.07, color='red',    zorder=0)
 
-        # Value labels on bars
+        # Fix 2: efficiency % on top, Q value below that — no inside-bar text
+        y_min = max(0, min(eff_vals) - 18)
         for bar, val, s in zip(bars2, eff_vals, streams):
-            q_p = df_comparison[df_comparison['Stream'] == s]['Q_plant (kcal/h)'].values[0]
-            q_d = df_comparison[df_comparison['Stream'] == s]['Q_design (kcal/h)'].values[0]
-            ax2.text(bar.get_x() + bar.get_width()/2,
-                     bar.get_height() + 0.5,
-                     f'{val:.1f}%', ha='center', va='bottom',
+            # Efficiency % — just above bar top
+            ax2.text(bar.get_x() + bar.get_width() / 2,
+                     bar.get_height() + 0.6,
+                     f'{val:.1f}%',
+                     ha='center', va='bottom',
                      fontsize=9, fontweight='bold', color='#111111')
-            ax2.text(bar.get_x() + bar.get_width()/2,
-                     bar.get_height()/2,
-                     f'{q_p/1e6:.2f}M\nkcal/h',
-                     ha='center', va='center', fontsize=7,
-                     color='white', fontweight='bold')
+            # Q plant value — below bar near baseline, never overlapping %
+            q_p = df_comparison[df_comparison['Stream'] == s]['Q_plant (kcal/h)'].values[0]
+            ax2.text(bar.get_x() + bar.get_width() / 2,
+                     y_min + 1.0,
+                     f'{q_p/1e6:.2f}M',
+                     ha='center', va='bottom',
+                     fontsize=7, color='#333333')
 
-        # Stream type label below x-axis
-        for i, s in enumerate(streams):
-            ax2.text(i, -3.5,
-                     design_specs[s]['stream_type'].upper(),
-                     ha='center', fontsize=7.5, color='#555555')
+        # Fix 3: stream type as rotated x-tick labels — no extra text() calls
+        ax2.set_xticks(range(len(streams)))
+        ax2.set_xticklabels(
+            [f"{s}\n({design_specs[s]['stream_type'].upper()})"
+             for s in streams],
+            fontsize=8.5
+        )
 
-        ax2.set_ylim(bottom=max(0, min(eff_vals) - 15), top=max(eff_vals) + 10)
-        ax2.set_xlabel('Stream', fontsize=10, labelpad=14)
+        ax2.set_ylim(bottom=y_min, top=max(eff_vals) + 14)
+        ax2.set_xlabel('Stream', fontsize=10, labelpad=6)
         ax2.set_ylabel('Duty Efficiency (% of Design)', fontsize=10)
-        ax2.set_title('Heat Duty Efficiency % per Stream\nvs Design Baseline',
+        ax2.set_title('Heat Duty Efficiency %\nvs Design Baseline',
                       fontsize=10, fontweight='bold', pad=10)
         ax2.legend(fontsize=7.5, loc='lower right', framealpha=0.9)
         ax2.grid(axis='y', alpha=0.2, zorder=0)
         fig2.tight_layout()
         st.pyplot(fig2)
 
-    # ── GRAPH 3: Per-Stream Effectiveness (ε) Plant vs Design ────
+    # ── GRAPH 3: Per-Stream Effectiveness (ε) ───────────────────
     with col_right:
         st.subheader("Per-Stream Effectiveness (ε)")
         st.caption("Temperature-based effectiveness: plant vs design per stream")
 
-        fig3, ax3 = plt.subplots(figsize=(7, 5))
+        fig3, ax3 = plt.subplots(figsize=(7, 6))
 
         x3    = np.arange(len(streams))
         w3    = 0.35
@@ -1225,44 +1236,56 @@ with tab3:
         bars_p3 = ax3.bar(x3 + w3/2, eps_p, w3, label='Plant ε',
                           color='#ED7D31', alpha=0.85, zorder=2)
 
-        # Value labels on bars
+        # Fix 4: stagger design/plant ε labels vertically to avoid collision
         for bar, val in zip(bars_d3, eps_d):
-            ax3.text(bar.get_x() + bar.get_width()/2,
-                     bar.get_height() + 0.005,
-                     f'{val:.3f}', ha='center', va='bottom',
+            ax3.text(bar.get_x() + bar.get_width() / 2,
+                     bar.get_height() + 0.004,
+                     f'{val:.3f}',
+                     ha='center', va='bottom',
                      fontsize=7.5, color='#1a3a5c', fontweight='bold')
+
         for bar, val in zip(bars_p3, eps_p):
-            ax3.text(bar.get_x() + bar.get_width()/2,
-                     bar.get_height() + 0.005,
-                     f'{val:.3f}', ha='center', va='bottom',
+            ax3.text(bar.get_x() + bar.get_width() / 2,
+                     bar.get_height() + 0.004,
+                     f'{val:.3f}',
+                     ha='center', va='bottom',
                      fontsize=7.5, color='#7b3300', fontweight='bold')
 
-        # Delta ε annotation above each stream pair
+        # Δε label placed above the taller of the two bars with extra clearance
+        top_eps = max(max(eps_d), max(eps_p))
         for i, s in enumerate(streams):
             delta_e = eps_p[i] - eps_d[i]
             color   = '#155724' if abs(delta_e) < 0.02 else \
                       '#856404' if abs(delta_e) < 0.05 else '#721c24'
-            ax3.text(i, max(eps_d[i], eps_p[i]) + 0.025,
-                     f'Δε={delta_e:+.3f}',
-                     ha='center', fontsize=7.5,
-                     color=color, fontweight='bold')
+            bar_top = max(eps_d[i], eps_p[i])
+            ax3.annotate(
+                f'Δε\n{delta_e:+.3f}',
+                xy=(i, bar_top + 0.008),
+                xytext=(i, bar_top + 0.045),
+                ha='center', va='bottom', fontsize=7, color=color,
+                fontweight='bold',
+                arrowprops=dict(arrowstyle='->', color=color, lw=0.7)
+            )
 
-        # Overall ε line
         ax3.axhline(design_baseline['eps_overall'], color='#4472C4',
                     linewidth=1.5, linestyle='--', alpha=0.6,
-                    label=f"Design avg ε = {design_baseline['eps_overall']:.3f}")
+                    label=f"Design avg ε={design_baseline['eps_overall']:.3f}")
         ax3.axhline(eps_plant, color='#ED7D31',
                     linewidth=1.5, linestyle='--', alpha=0.6,
-                    label=f"Plant avg ε  = {eps_plant:.3f}")
+                    label=f"Plant avg ε ={eps_plant:.3f}")
 
         ax3.set_xticks(x3)
-        ax3.set_xticklabels(streams, fontsize=9)
+        ax3.set_xticklabels(
+            [f"{s}\n({design_specs[s]['stream_type'].upper()})"
+             for s in streams],
+            fontsize=8.5
+        )
         ax3.set_xlabel('Stream', fontsize=10, labelpad=6)
         ax3.set_ylabel('Effectiveness (ε)', fontsize=10)
-        ax3.set_title('Per-Stream Effectiveness (ε)\nPlant vs Design — Δε annotated',
+        ax3.set_title('Per-Stream Effectiveness (ε)\nPlant vs Design',
                       fontsize=10, fontweight='bold', pad=10)
         ax3.legend(fontsize=7.5, loc='upper right', framealpha=0.9)
-        ax3.set_ylim(bottom=0, top=max(max(eps_d), max(eps_p)) + 0.12)
+        ax3.set_ylim(bottom=0, top=top_eps + 0.18)
         ax3.grid(axis='y', alpha=0.2, zorder=0)
         fig3.tight_layout()
         st.pyplot(fig3)
